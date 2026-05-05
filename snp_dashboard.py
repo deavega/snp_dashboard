@@ -1275,73 +1275,80 @@ if f_macro:
                         'Narrow net ext. debt/CARs (%)':                    (False, [50, 100]),
                     }
 
-                    summary_rows_num = []
-                    summary_rows_disp = []
-                    for metric in selected_metrics:
-                        num_row  = {"Indicator": metric}
-                        disp_row = {"Indicator": metric}
-                        for n in sel_nations:
-                            sub = trend_filtered[
-                                (trend_filtered['Country'] == n) &
-                                (trend_filtered['Metric'] == metric)
-                            ].dropna(subset=['Value'])
-                            if sub.empty:
-                                num_row[n]  = np.nan
-                                disp_row[n] = "N/A"
-                            else:
-                                def yk(y):
-                                    try: return float(str(y).replace('e','').replace('f',''))
-                                    except: return 0
-                                sub2 = sub.copy()
-                                sub2['_s'] = sub2['Year'].apply(yk)
-                                latest = sub2.sort_values('_s').iloc[-1]
-                                val = round(latest['Value'], 2)
-                                yr  = latest['Year']
-                                num_row[n]  = val
-                                disp_row[n] = f"{val:,.2f}  ({yr})"
-                        summary_rows_num.append(num_row)
-                        summary_rows_disp.append(disp_row)
+                    if not selected_metrics:
+                        st.info("Select at least one indicator above to see the summary table.")
+                    else:
+                        summary_rows_num = []
+                        summary_rows_disp = []
 
-                    num_df  = pd.DataFrame(summary_rows_num).set_index("Indicator")
-                    disp_df = pd.DataFrame(summary_rows_disp).set_index("Indicator")
+                        for metric in selected_metrics:
+                            num_row  = {"Indicator": metric}
+                            disp_row = {"Indicator": metric}
 
-                    GREEN_S  = "background-color:#d1fae5;color:#065f46;font-weight:600;"
-                    YELLOW_S = "background-color:#fef3c7;color:#78350f;font-weight:600;"
-                    RED_S    = "background-color:#fee2e2;color:#991b1b;font-weight:600;"
-                    NONE_S   = ""
+                            for n in sel_nations:
+                                sub = trend_filtered[
+                                    (trend_filtered['Country'] == n) &
+                                    (trend_filtered['Metric'] == metric)
+                                ].dropna(subset=['Value'])
 
-                    def style_summary_table(display):
-                        styles = pd.DataFrame(NONE_S, index=display.index, columns=display.columns)
-                        for metric in display.index:
-                            if metric not in RAW_METRIC_THRESHOLDS:
-                                continue
-                            higher_better, (g_thresh, y_thresh) = RAW_METRIC_THRESHOLDS[metric]
-                            for col in display.columns:
-                                try:
-                                    val = float(num_df.loc[metric, col])
-                                except (ValueError, TypeError, KeyError):
-                                    continue
-                                if np.isnan(val):
-                                    continue
-                                if higher_better:
-                                    color = GREEN_S if val >= g_thresh else (YELLOW_S if val >= y_thresh else RED_S)
+                                if sub.empty:
+                                    num_row[n]  = np.nan
+                                    disp_row[n] = "N/A"
                                 else:
-                                    color = GREEN_S if val <= g_thresh else (YELLOW_S if val <= y_thresh else RED_S)
-                                styles.loc[metric, col] = color
-                        return styles
+                                    def yk(y):
+                                        try: return float(str(y).replace('e','').replace('f',''))
+                                        except: return 0
+                                    sub2 = sub.copy()
+                                    sub2['_s'] = sub2['Year'].apply(yk)
+                                    latest = sub2.sort_values('_s').iloc[-1]
+                                    val = round(latest['Value'], 2)
+                                    yr  = latest['Year']
+                                    num_row[n]  = val
+                                    disp_row[n] = f"{val:,.2f}  ({yr})"
 
-                    st.markdown("""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;font-size:13px;">
-                        <span style="background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:4px;font-weight:600;">🟢 Strong</span>
-                        <span style="background:#fef3c7;color:#78350f;padding:3px 10px;border-radius:4px;font-weight:600;">🟡 Moderate</span>
-                        <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:4px;font-weight:600;">🔴 Weak</span>
-                        <span style="color:#888;font-size:12px;margin-left:8px;">Values show latest available year in parentheses</span>
-                    </div>""", unsafe_allow_html=True)
+                            summary_rows_num.append(num_row)
+                            summary_rows_disp.append(disp_row)
 
-                    st.dataframe(
-                        disp_df.style.apply(style_summary_table, axis=None),
-                        use_container_width=True,
-                    )
+                        num_df  = pd.DataFrame(summary_rows_num).set_index("Indicator")
+                        disp_df = pd.DataFrame(summary_rows_disp).set_index("Indicator")
+
+                        GREEN_S  = "background-color:#d1fae5;color:#065f46;font-weight:600;"
+                        YELLOW_S = "background-color:#fef3c7;color:#78350f;font-weight:600;"
+                        RED_S    = "background-color:#fee2e2;color:#991b1b;font-weight:600;"
+                        NONE_S   = ""
+
+                        def style_summary_table(display):
+                            styles = pd.DataFrame(NONE_S, index=display.index, columns=display.columns)
+                            for metric in display.index:
+                                if metric not in RAW_METRIC_THRESHOLDS:
+                                    continue
+                                higher_better, (g_thresh, y_thresh) = RAW_METRIC_THRESHOLDS[metric]
+                                for col in display.columns:
+                                    try:
+                                        val = float(num_df.loc[metric, col])
+                                    except (ValueError, TypeError, KeyError):
+                                        continue
+                                    if np.isnan(val):
+                                        continue
+                                    if higher_better:
+                                        color = GREEN_S if val >= g_thresh else (YELLOW_S if val >= y_thresh else RED_S)
+                                    else:
+                                        color = GREEN_S if val <= g_thresh else (YELLOW_S if val <= y_thresh else RED_S)
+                                    styles.loc[metric, col] = color
+                            return styles
+
+                        st.markdown("""
+                        <div style="display:flex;gap:16px;margin-bottom:8px;font-size:13px;">
+                            <span style="background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:4px;font-weight:600;">🟢 Strong</span>
+                            <span style="background:#fef3c7;color:#78350f;padding:3px 10px;border-radius:4px;font-weight:600;">🟡 Moderate</span>
+                            <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:4px;font-weight:600;">🔴 Weak</span>
+                            <span style="color:#888;font-size:12px;margin-left:8px;">Values show latest available year in parentheses</span>
+                        </div>""", unsafe_allow_html=True)
+
+                        st.dataframe(
+                            disp_df.style.apply(style_summary_table, axis=None),
+                            use_container_width=True,
+                        )
 
         with tabs[2]: # RECOMMENDATION
             st.markdown("<h2 style='color:#1E3A8A;'>💡 Sovereign Rating Recommendation</h2>", unsafe_allow_html=True)
@@ -1757,68 +1764,77 @@ if f_macro:
             st.markdown("## 📄 Briefing Notes Generator")
             st.markdown(
                 "Generate a professional briefing note covering National Portfolio, "
-                "Peer Comparison, Recommendations, and QO targeting. "
-                "Download as **PDF** or **PowerPoint**."
+                "Recommendations, and QO targeting. Peer Comparison section is included "
+                "only if you have selected peers in the **📉 Peer Comparison** tab."
             )
 
-            # ── Config ────────────────────────────────────────────────────────
-            bn_col1, bn_col2 = st.columns(2)
-            with bn_col1:
-                st.markdown("**Countries included in peer section:**")
-                # Reuse sel_nations from tab[1] if already set, else just target
-                try:
-                    briefing_nations = sel_nations if sel_nations else [target]
-                except:
-                    briefing_nations = [target]
-                st.write(", ".join(briefing_nations))
-
-            with bn_col2:
-                st.markdown("**Trend metrics included:**")
-                try:
-                    briefing_metrics = selected_metrics if selected_metrics else []
-                except:
-                    briefing_metrics = []
-                st.write(", ".join(briefing_metrics) if briefing_metrics else "None selected in Peer Comparison tab")
-
-            st.info(
-                "💡 To include trend charts and peer metrics, first visit "
-                "**📉 Peer Comparison → Historical Trends** and select countries & indicators."
-            )
-            st.divider()
-
-            # ── Build comp_list for briefing ──────────────────────────────────
+            # ── Resolve peer data (graceful fallback to target-only) ──────────
             try:
-                briefing_comp_list = comp_list   # from tabs[1]
+                briefing_comp_list = comp_list if (comp_list and len(comp_list) > 0) else None
             except NameError:
-                # fallback: just target
-                s_inst_b = max(1.0, min(6.0, 6 - (float(r['WGI_Score'])/20))) if pd.notna(r['WGI_Score']) else 3.5
-                s_eco_b  = score_economic(r['GDP_PC'], r['Growth'], "Standard")
-                s_fis_b  = score_fiscal(r['Debt_GDP'], r['Int_Rev'], r['Balance'], "Neutral")[0]
-                s_ext_b  = score_external(r['GEFN'], r['NIIP_CAR'], 20, r['Reserves'])[0]
-                s_mon_b  = score_monetary("Floating", "High", r['CPI'], r['Fin_Depth'])
-                ie_b = (s_inst_b + s_eco_b) / 2
-                fp_b = (s_fis_b + s_ext_b + s_mon_b) / 3
-                srm_b = get_indicative_rating(ie_b, fp_b)
-                qo_b = RATING_TO_NUM.get(r['Actual_Rating'], 8) - RATING_TO_NUM.get(srm_b, 8)
-                briefing_comp_list = [{
-                    "Country": target,
-                    "🏛 Institutional": s_inst_b, "📈 Economic": s_eco_b,
-                    "💰 Fiscal": s_fis_b, "🌐 External": s_ext_b, "🏦 Monetary": s_mon_b,
-                    "_ie": ie_b, "_fp": fp_b, "_srm": srm_b, "_qo": qo_b, "_nr": r,
-                }]
+                briefing_comp_list = None
 
-            # trend data
+            # Always build at least a single-country entry for the target
+            target_entry = {
+                "Country": target,
+                "🏛 Institutional": s_inst,
+                "📈 Economic": s_eco,
+                "💰 Fiscal": s_fis,
+                "🌐 External": s_ext,
+                "🏦 Monetary": s_mon,
+                "_ie": prof_ie, "_fp": prof_fp,
+                "_srm": srm_rating, "_qo": qo, "_nr": r,
+            }
+
+            if briefing_comp_list is None:
+                briefing_comp_list = [target_entry]
+
+            # Ensure target is always first entry
+            countries_in_list = [c["Country"] for c in briefing_comp_list]
+            if target not in countries_in_list:
+                briefing_comp_list = [target_entry] + briefing_comp_list
+
+            briefing_nations = [c["Country"] for c in briefing_comp_list]
+            has_peers = len(briefing_comp_list) > 1
+
+            # ── Resolve trend data ────────────────────────────────────────────
             try:
-                briefing_trend_df = trend_df
+                briefing_trend_df = trend_df if (trend_df is not None and not trend_df.empty) else None
             except NameError:
                 briefing_trend_df = None
+
+            try:
+                briefing_metrics = selected_metrics if (selected_metrics and len(selected_metrics) > 0) else []
+            except NameError:
+                briefing_metrics = []
+
+            # ── Info summary ──────────────────────────────────────────────────
+            col_i1, col_i2, col_i3 = st.columns(3)
+            with col_i1:
+                st.markdown("**Target Sovereign**")
+                st.write(f"📌 {target} ({r['Actual_Rating']})")
+            with col_i2:
+                st.markdown("**Peers Included**")
+                if has_peers:
+                    st.write(", ".join(briefing_nations[1:]))
+                else:
+                    st.caption("None — visit Peer Comparison tab to add peers")
+            with col_i3:
+                st.markdown("**Trend Indicators**")
+                st.write(", ".join(briefing_metrics) if briefing_metrics else "None selected")
+
+            st.info(
+                "💡 **To enrich the report:** visit **📉 Peer Comparison** to select peer countries "
+                "and indicators before generating. The report works without them too."
+            )
+            st.divider()
 
             # ── Download buttons ──────────────────────────────────────────────
             dl1, dl2 = st.columns(2)
 
             with dl1:
                 st.markdown("### 📑 PDF Briefing Note")
-                st.markdown("Professional multi-page report with tables, charts, and narrative.")
+                st.markdown("Multi-page report with tables, charts, and narrative.")
                 if st.button("⚙️ Generate PDF", use_container_width=True):
                     with st.spinner("Generating PDF..."):
                         pdf_buf = generate_pdf(
@@ -1828,7 +1844,7 @@ if f_macro:
                             s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
                             prof_ie=prof_ie, prof_fp=prof_fp,
                             comp_list=briefing_comp_list,
-                            sel_nations=[c["Country"] for c in briefing_comp_list],
+                            sel_nations=briefing_nations,
                             trend_df=briefing_trend_df,
                             selected_metrics=briefing_metrics,
                             signals=signals,
@@ -1844,7 +1860,7 @@ if f_macro:
 
             with dl2:
                 st.markdown("### 📊 PowerPoint Deck")
-                st.markdown("Editable slide deck with charts, tables, and QO narrative.")
+                st.markdown("Editable slide deck ready for presentations.")
                 if st.button("⚙️ Generate PowerPoint", use_container_width=True):
                     with st.spinner("Generating PowerPoint..."):
                         pptx_buf = generate_pptx(
@@ -1854,7 +1870,7 @@ if f_macro:
                             s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
                             prof_ie=prof_ie, prof_fp=prof_fp,
                             comp_list=briefing_comp_list,
-                            sel_nations=[c["Country"] for c in briefing_comp_list],
+                            sel_nations=briefing_nations,
                             trend_df=briefing_trend_df,
                             selected_metrics=briefing_metrics,
                             signals=signals,
