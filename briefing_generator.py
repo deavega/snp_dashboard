@@ -864,9 +864,10 @@ def generate_pptx(target, r, srm_rating, qo,
                             cell.set_facecolor(fc)
                         except: pass
 
+        last_row = len(metrics_labels)  # 0=header, 1..N=data rows
         for ci in range(len(comp_list)):
-            tbl[-1, ci].set_facecolor("#DBEAFE")
-            tbl[-1, ci].set_text_props(fontweight='bold')
+            tbl[last_row, ci].set_facecolor("#DBEAFE")
+            tbl[last_row, ci].set_text_props(fontweight='bold')
 
         fig.tight_layout()
         tbuf = io.BytesIO()
