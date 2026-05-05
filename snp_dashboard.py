@@ -339,8 +339,43 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.write("---")
 
-# Area Unggah File (Hanya S&P, Fitch WGI ditarik otomatis dari Drive Admin)
-f_macro = st.file_uploader("Upload S&P Macro Dataset (.xlsx)", type=["xlsx"])
+import os
+
+# ── Default dataset path (relative to script location) ───────────────────────
+DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "snp_data.xlsx")
+
+# ── File source selector ──────────────────────────────────────────────────────
+st.markdown("#### 📂 Data Source")
+use_upload = st.toggle("Upload my own dataset", value=False,
+                       help="Toggle on to upload a custom S&P macro dataset. "
+                            "When off, the built-in default dataset is used.")
+
+f_macro = None
+data_source_label = ""
+
+if use_upload:
+    f_macro = st.file_uploader(
+        "Upload S&P Macro Dataset (.xlsx)", type=["xlsx"],
+        help="Your file must follow the S&P macro dataset format."
+    )
+    if f_macro:
+        data_source_label = f"📤 Using uploaded file: **{f_macro.name}**"
+    else:
+        st.info("👆 Upload a file above, or toggle off to use the default dataset.")
+else:
+    if os.path.exists(DEFAULT_DATA_PATH):
+        with open(DEFAULT_DATA_PATH, "rb") as f:
+            f_macro = io.BytesIO(f.read())
+            f_macro.name = "sp_macro_default.xlsx"   # give it a name attribute
+        data_source_label = "📊 Using built-in default dataset"
+    else:
+        st.error(
+            "Default dataset not found at `data/sp_macro_default.xlsx`. "
+            "Please upload your file manually."
+        )
+
+if data_source_label:
+    st.caption(data_source_label)
 
 if f_macro:
     with st.spinner('Fetching cloud reference data and processing...'):
@@ -900,7 +935,12 @@ if f_macro:
 
                 # Load trend data (cached)
                 with st.spinner("Extracting trend data..."):
-                    xls_bytes = f_macro.getvalue()
+                    if hasattr(f_macro, 'getvalue'):
+                        xls_bytes = f_macro.getvalue()   # Streamlit UploadedFile
+                    else:
+                        f_macro.seek(0)
+                        xls_bytes = f_macro.read()       # BytesIO from default file
+                        f_macro.seek(0)                  # reset for any subsequent reads
                     trend_df = extract_trend_data(xls_bytes)
 
                 if trend_df.empty:
