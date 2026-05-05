@@ -326,6 +326,30 @@ def extract_trend_data(_xls_bytes):
 # Konfigurasi Halaman & Judul Profesional
 st.set_page_config(page_title="Sovereign Rating Monitoring", layout="wide")
 
+# ── ACCESS CONTROL ────────────────────────────────────────────────────────────
+PASSCODE = st.secrets.get("APP_PASSCODE", "admin123")  # set in Streamlit secrets
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("<h2 style='text-align:center; color:#1E3A8A;'>🔐 Sovereign Rating Monitoring</h2>", 
+                unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#64748B;'>Enter passcode to access the dashboard</p>", 
+                unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        entered = st.text_input("Passcode", type="password", placeholder="Enter passcode...")
+        if st.button("Login", use_container_width=True):
+            if entered == PASSCODE:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect passcode. Please try again.")
+    st.stop()
+
+
 # Branding Header
 st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Sovereign Rating Monitoring</h1>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align: center; color: #64748B;'>Based on S&P Global Methodology</h4>", unsafe_allow_html=True)
