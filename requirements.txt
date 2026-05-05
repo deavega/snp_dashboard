@@ -6,3 +6,7 @@ requests
 gdown
 openpyxl
 datetime
+generate_pdf
+matplotlib
+reportlab
+pptx
