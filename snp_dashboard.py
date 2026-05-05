@@ -327,7 +327,7 @@ def extract_trend_data(_xls_bytes):
 st.set_page_config(page_title="Sovereign Rating Monitoring", layout="wide")
 
 # ── ACCESS CONTROL ────────────────────────────────────────────────────────────
-PASSCODE = "Dspp123#"
+PASSCODE = st.secrets["APP_PASSCODE"]
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
