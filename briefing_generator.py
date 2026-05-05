@@ -5,8 +5,6 @@ Import this module and call generate_pdf() or generate_pptx().
 """
 
 import io
-import os
-import tempfile
 import textwrap
 from datetime import datetime
 
@@ -679,11 +677,7 @@ def generate_pptx(target, r, srm_rating, qo,
 
     def add_image_buf(slide, buf, x, y, w, h):
         buf.seek(0)
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            tmp.write(buf.read())
-            tmp_path = tmp.name
-        slide.shapes.add_picture(tmp_path, Inches(x), Inches(y), Inches(w), Inches(h))
-        os.unlink(tmp_path)
+        slide.shapes.add_picture(buf, Inches(x), Inches(y), Inches(w), Inches(h))
 
     def rating_fill(rating):
         num = RATING_TO_NUM.get(str(rating).replace("*","").strip(), -1)
