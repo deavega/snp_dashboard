@@ -1557,9 +1557,20 @@ if f_macro:
                                     def yk(y):
                                         try: return float(str(y).replace('e','').replace('f',''))
                                         except: return 0
+
                                     sub2 = sub.copy()
-                                    sub2['_s'] = sub2['Year'].apply(yk)
-                                    latest = sub2.sort_values('_s').iloc[-1]
+                                    sub2['_s']        = sub2['Year'].apply(yk)
+                                    sub2['_is_hist']  = sub2['Year'].apply(
+                                        lambda y: not str(y).strip().endswith('f'))
+
+                                    # Priority: last historical/estimate (e) year
+                                    # Only fall back to forecast (f) if nothing else exists
+                                    hist_est = sub2[sub2['_is_hist']].sort_values('_s')
+                                    if not hist_est.empty:
+                                        latest = hist_est.iloc[-1]
+                                    else:
+                                        latest = sub2.sort_values('_s').iloc[-1]
+
                                     val = round(latest['Value'], 2)
                                     yr  = latest['Year']
                                     num_row[n]  = val
