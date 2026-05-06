@@ -199,6 +199,8 @@ def _metric_color(metric, val):
         return RL_RED, colors.HexColor(RED)
 
 
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF GENERATOR
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,7 +209,16 @@ def generate_pdf(target, r, srm_rating, qo,
                  s_inst, s_eco, s_fis, s_ext, s_mon,
                  prof_ie, prof_fp,
                  comp_list, sel_nations, trend_df, selected_metrics,
-                 signals, qo_opportunities):
+                 signals, qo_opportunities,
+                 # ── ADD THESE ──
+                 supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None):
+    supp_factors    = supp_factors or []
+    final_indicative = final_indicative or srm_rating
+    supp_adj_sign   = f"{int(supp_adj):+}" if supp_adj != 0 else "None"
+
+    srm_to_final_diff  = RATING_TO_NUM.get(final_indicative, 8) - RATING_TO_NUM.get(srm_rating, 8)
+    final_to_actual_diff = RATING_TO_NUM.get(str(r['Actual_Rating']).replace('*','').strip(), 8) - RATING_TO_NUM.get(final_indicative, 8)
+
     """
     Returns a bytes buffer containing the PDF briefing note.
     """
@@ -264,11 +275,12 @@ def generate_pdf(target, r, srm_rating, qo,
                 Paragraph(note, st_caption)]
 
     # Summary KPI table
-    qo_sign = f"{int(qo):+}"
+    qo_sign       = f"{int(qo):+}"
+    supp_adj_sign = f"{int(supp_adj):+}" if supp_adj != 0 else "None"
     kpi_data = [
-        ["S&P Actual Rating", "SRM Model Output", "Qualitative Overlay", "IE Profile", "FP Profile"],
-        [str(r['Actual_Rating']), srm_rating, qo_sign,
-         f"{prof_ie:.2f}", f"{prof_fp:.2f}"],
+        ["Actual Rating", "SRM Matrix", "After Supplemental", "Residual ±1", "IE / FP Profile"],
+        [str(r['Actual_Rating']), srm_rating, final_indicative,
+         qo_sign, f"{prof_ie:.2f} / {prof_fp:.2f}"],
     ]
     kpi_style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), RL_NAVY),
@@ -325,16 +337,40 @@ def generate_pdf(target, r, srm_rating, qo,
 
     # QO interpretation
     qo_label = "Upgrade" if qo > 0 else ("Penalty" if qo < 0 else "Neutral")
+    # Supplemental factors narrative
+    if supp_factors:
+        story.append(Paragraph("<b>⚡ Supplemental Adjustment Factors (para. 125–128):</b>", st_h3))
+        for f in supp_factors:
+            prefix = "▼" if f["type"] == "negative" else "▲"
+            story.append(Paragraph(
+                f"{prefix} <b>{f['factor']}</b> [{f['impact']}]: {f['detail']}",
+                st_body))
+    if cap_note:
+        story.append(Paragraph(
+            f"🚧 <b>Hard Cap Applied:</b> {cap_note}", st_body))
+    if not supp_factors and not cap_note:
+        story.append(Paragraph(
+            "No supplemental adjustment factors triggered. "
+            "SRM matrix output equals post-supplemental indicative rating.",
+            st_body))
+
+    story.append(vsp(4))
+
+    # Residual ±1 notch
+    qo_label = "Upgrade" if qo > 0 else ("Penalty" if qo < 0 else "Neutral")
     qo_text  = (
-        "Positive QO: S&P views qualitative factors as stronger than the SRM model implies — "
-        "strong institutions, lower contingent liability risks, or superior fiscal flexibility."
+        "Positive residual: S&P views transitional factors, ESG considerations, or "
+        "over-performance vs peers as supporting a higher rating than the model implies."
         if qo > 0 else
-        "Negative QO: S&P identified hidden risks not fully captured by the quantitative model — "
-        "SOE/GRE liabilities, narrow fiscal space, external vulnerability, or governance concerns."
+        "Negative residual: S&P identified factors not fully captured by the model — "
+        "transitional risks, underperformance vs peers, or governance concerns."
         if qo < 0 else
-        "Neutral QO: The SRM model output aligns with S&P's full qualitative assessment."
+        "No residual adjustment — the post-supplemental indicative rating aligns with "
+        "the official rating."
     )
-    story.append(Paragraph(f"<b>Qualitative Overlay ({qo_sign} notch — {qo_label}):</b> {qo_text}", st_body))
+    story.append(Paragraph(
+        f"<b>Residual ±1 Notch Adjustment ({qo_sign} — {qo_label}):</b> {qo_text}",
+        st_body))
     story.append(hr())
 
     # ── SECTION 2 — PEER COMPARISON ───────────────────────────────────────────
@@ -614,6 +650,91 @@ def generate_pdf(target, r, srm_rating, qo,
     # Footer
     story.append(vsp(16))
     story.append(hr())
+    # Rating derivation flow summary box
+    story.append(vsp(8))
+    story.append(Paragraph("<b>Rating Derivation — Three Layer Flow</b>", st_h3))
+
+    # Wrap long text in Paragraph so ReportLab word-wraps within column
+    st_cell = ParagraphStyle("cell", fontSize=8, leading=11, wordWrap='CJK')
+    st_head = ParagraphStyle("head", fontSize=8, leading=11,
+                             fontName="Helvetica-Bold", textColor=colors.white)
+
+    def cell(text):
+        return Paragraph(str(text), st_cell)
+
+    def head(text):
+        return Paragraph(str(text), st_head)
+
+    # Build basis text for step 2
+    if cap_note:
+        basis_2 = cap_note
+    elif supp_factors:
+        basis_2 = "; ".join([f['factor'] for f in supp_factors])
+    else:
+        basis_2 = "Para. 125-128 conditions not met — no extreme external, fiscal, or institutional triggers."
+
+    # Build basis text for step 3
+    if qo != 0:
+        basis_3 = ("Para. 15: positive transitional dynamics, ESG factors, or sustained "
+                   "outperformance vs peers." if qo > 0 else
+                   "Para. 15: negative transitional dynamics, ESG concerns, or sustained "
+                   "underperformance vs peers.")
+    else:
+        basis_3 = "Post-supplemental indicative rating equals official rating — no committee adjustment."
+
+    flow_rows = [
+        [head("Step"), head("Description"), head("Output"), head("Basis")],
+        [cell("1"),
+         cell("Five-pillar SRM matrix lookup"),
+         cell(srm_rating),
+         cell(f"IE Profile = {prof_ie:.2f}, FP Profile = {prof_fp:.2f}. "
+              f"Matrix intersection determines indicative rating.")],
+        [cell("2"),
+         cell(f"Supplemental adjustment: {int(supp_adj):+} notch" if supp_adj != 0
+              else ("Hard cap applied" if cap_note
+                    else "No supplemental factors triggered")),
+         cell(final_indicative),
+         cell(basis_2)],
+        [cell("3"),
+         cell(f"Residual ±1 notch adjustment: {int(qo):+}" if qo != 0
+              else "No residual adjustment"),
+         cell(str(r['Actual_Rating'])),
+         cell(basis_3)],
+    ]
+
+    flow_style = TableStyle([
+        ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
+        ('ALIGN',         (2,0), (2,-1), 'CENTER'),
+        ('VALIGN',        (0,0), (-1,-1), 'TOP'),
+        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ('ROWBACKGROUNDS',(0,1), (-1,-1), [RL_WHITE, RL_LGREY, RL_WHITE]),
+        ('BACKGROUND',    (2,1), (2,1), _rating_color(srm_rating)[0]),
+        ('BACKGROUND',    (2,2), (2,2), _rating_color(final_indicative)[0]),
+        ('BACKGROUND',    (2,3), (2,3), _rating_color(r['Actual_Rating'])[0]),
+        ('TOPPADDING',    (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING',   (0,0), (-1,-1), 4),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 4),
+    ])
+
+    story.append(Table(flow_rows,
+        colWidths=[1*cm, 5.5*cm, 2*cm, 9*cm],   # wider Basis column
+        style=flow_style,
+        repeatRows=1))
+
+    story.append(vsp(4))
+    story.append(Paragraph(
+        (f"<i>Note: A residual adjustment of {int(qo):+} notch means S&P's rating committee "
+         f"applied a para. 15 adjustment {'above' if qo>0 else 'below'} the post-supplemental "
+         f"indicative rating of <b>{final_indicative}</b> to arrive at the official "
+         f"<b>{r['Actual_Rating']}</b>. This is NOT a supplemental adjustment — it reflects "
+         f"{'positive transitional dynamics, favorable ESG factors, or sustained outperformance vs peers.' if qo>0 else 'negative transitional dynamics, ESG concerns, or sustained underperformance vs peers.'}</i>")
+        if qo != 0 else
+        (f"<i>The official rating <b>{r['Actual_Rating']}</b> equals the post-supplemental "
+         f"indicative rating — no residual adjustment was applied by S&P's rating committee.</i>"),
+        st_small))
+    
     story.append(Paragraph(
         f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
         f"Generated {datetime.now().strftime('%d %B %Y')}</i>",
@@ -632,7 +753,11 @@ def generate_pptx(target, r, srm_rating, qo,
                   s_inst, s_eco, s_fis, s_ext, s_mon,
                   prof_ie, prof_fp,
                   comp_list, sel_nations, trend_df, selected_metrics,
-                  signals, qo_opportunities):
+                  signals, qo_opportunities,
+                  # ── ADD THESE ──
+                  supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None):
+    supp_factors    = supp_factors or []
+    final_indicative = final_indicative or srm_rating
     """Returns a bytes buffer containing the PPTX briefing."""
 
     prs = Presentation()
@@ -707,7 +832,8 @@ def generate_pptx(target, r, srm_rating, qo,
     add_text(sl, "S&P Rating", 10, 1.9, 2.6, 0.35, size=9, color="64748B", align=PP_ALIGN.CENTER)
     add_text(sl, str(r['Actual_Rating']), 10, 2.2, 2.6, 0.9,
              size=40, bold=True, color="1E3A8A", align=PP_ALIGN.CENTER)
-    add_text(sl, f"SRM: {srm_rating}  |  QO: {qo_sign}",
+    add_text(sl,
+             f"SRM: {srm_rating}  →  {final_indicative}  |  Residual: {qo_sign}",
              10, 3.1, 2.6, 0.4, size=10, color="475569", align=PP_ALIGN.CENTER)
 
     # ── SLIDE 2: NATIONAL PORTFOLIO ───────────────────────────────────────────
@@ -720,11 +846,12 @@ def generate_pptx(target, r, srm_rating, qo,
 
     # KPI cards row
     kpis = [
-        ("Actual Rating", str(r['Actual_Rating']), rating_fill(r['Actual_Rating'])),
-        ("SRM Output",    srm_rating,               rating_fill(srm_rating)),
-        ("QO Notch",      qo_sign,                  "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9")),
-        ("IE Profile",    f"{prof_ie:.2f}",          "EFF6FF"),
-        ("FP Profile",    f"{prof_fp:.2f}",          "EFF6FF"),
+        ("Actual Rating",     str(r['Actual_Rating']), rating_fill(r['Actual_Rating'])),
+        ("SRM Matrix",        srm_rating,               rating_fill(srm_rating)),
+        ("Post-Supplemental", final_indicative,         rating_fill(final_indicative)),
+        ("Residual ±1 Notch", qo_sign,
+         "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9")),
+        ("IE / FP",           f"{prof_ie:.2f} / {prof_fp:.2f}", "EFF6FF"),
     ]
     for i, (label, val, bg) in enumerate(kpis):
         x = 0.3 + i * 2.55
@@ -751,16 +878,31 @@ def generate_pptx(target, r, srm_rating, qo,
                  color=col, align=PP_ALIGN.CENTER)
 
     # QO note
-    qo_text_short = (
-        f"QO {qo_sign} ({qo_label}): " + (
-        "S&P views qualitative factors as STRONGER than SRM implies." if qo > 0 else
-        "S&P identified hidden risks not captured by the quantitative model." if qo < 0 else
-        "SRM model aligns with full qualitative assessment — no material adjustments."
-        ))
-    add_rect(sl, 0.3, 3.55, 12.7, 0.6,
+    # Supplemental + residual combined note
+    if supp_factors:
+        supp_text = f"⚡ Supplemental: {'; '.join([f['factor']+' ('+f['impact']+')' for f in supp_factors])}"
+    elif cap_note:
+        supp_text = f"🚧 Cap: {cap_note}"
+    else:
+        supp_text = "✅ No supplemental adjustments triggered"
+
+    residual_text = (
+        f"Residual {qo_sign} notch ({qo_label}): " + (
+        "Positive factors beyond model." if qo > 0 else
+        "Hidden risks beyond model." if qo < 0 else
+        "Model aligned with official rating.")
+    )
+
+    add_rect(sl, 0.3, 3.55, 12.7, 0.35,
+             "d1fae5" if not supp_factors and not cap_note else "fef3c7",
+             line_hex="CBD5E1", line_w=Pt(0.5))
+    add_text(sl, supp_text, 0.4, 3.58, 12.5, 0.28, size=8,
+             color="065f46" if not supp_factors else "78350f")
+
+    add_rect(sl, 0.3, 3.95, 12.7, 0.35,
              "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9"),
              line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, qo_text_short, 0.4, 3.6, 12.5, 0.5, size=9,
+    add_text(sl, residual_text, 0.4, 3.98, 12.5, 0.28, size=8,
              color="065f46" if qo > 0 else ("991b1b" if qo < 0 else "475569"))
 
     # ── SLIDE 3: PEER COMPARISON — PILLAR SCORES ──────────────────────────────

@@ -40,36 +40,216 @@ def get_indicative_rating(ie_prof, fp_prof):
 # 2. CALIBRATED SCORING ENGINE
 # ==========================================
 def score_economic(gdp_pc, growth, diversification="Standard"):
-    """Skoring pilar Ekonomi dengan ambang batas (threshold) yang dikalibrasi."""
-    if gdp_pc > 48000: s = 1
-    elif gdp_pc > 34000: s = 2
-    elif gdp_pc > 20000: s = 3
-    elif gdp_pc > 7000: s = 4
-    elif gdp_pc > 1500: s = 5 
+    """Updated 2024 GDP thresholds per S&P Appendix D Oct 2024."""
+    if gdp_pc > 48700: s = 1
+    elif gdp_pc > 34600: s = 2
+    elif gdp_pc > 20500: s = 3
+    elif gdp_pc > 7000:  s = 4
+    elif gdp_pc > 1400:  s = 5
     else: s = 6
-    if growth > 4.0: s = max(1, s - 1) 
-    if diversification == "High": s = max(1, s - 1)
+    # Growth adjustment — tier-specific benchmark (Table 11)
+    benchmark = 0.9 if s <= 2 else (2.0 if s == 3 else 2.3)
+    if growth > benchmark * 1.5:    s = max(1, s - 1)
+    elif growth < benchmark * 0.5:  s = min(6, s + 1)
+    # Diversification
+    if diversification == "High":   s = max(1, s - 1)
+    if diversification == "Low":    s = min(6, s + 1)
     return s
 
-def score_external(gefn, niip, car_receipts=20, reserves_months=6.0):
-    """Skoring pilar Eksternal berdasarkan likuiditas dan posisi NIIP."""
-    l_s = 1 if gefn <= 50 or reserves_months > 6 else (2 if gefn <= 75 else 3)
-    d_s = 1 if niip >= 0 else (2 if niip > -20 else (4 if niip > -100 else 6))
-    return (l_s + d_s) / 2, l_s, d_s
 
 def score_fiscal(debt_gdp, int_rev, balance, flex="Neutral"):
-    """Skoring pilar Fiskal yang disesuaikan dengan profil utang Indonesia."""
-    perf = 1 if balance >= 0 else (2 if balance > -3 else 4)
-    burd = 2 if debt_gdp <= 45 and int_rev <= 15 else (4 if debt_gdp <= 60 else 6)
-    final_score = (perf + burd) / 2
-    if flex == "High": final_score = max(1, final_score - 0.5)
-    return final_score, perf, burd
+    """
+    Performance from GG balance proxy (Table 5).
+    Burden from Table 6 debt×interest matrix.
+    """
+    # Fiscal performance (balance as proxy for change in net debt)
+    if balance >= 0:    perf = 1
+    elif balance >= -3: perf = 2
+    elif balance >= -5: perf = 4   # ← keep OLD -3/-5 boundary, skip perf=3
+    else:               perf = 5
+
+    # Debt burden — Table 6 matrix
+    if int_rev <= 5:
+        burd = 1 if debt_gdp < 30 else (2 if debt_gdp < 60 else (3 if debt_gdp < 80 else (4 if debt_gdp < 100 else 5)))
+    elif int_rev <= 10:
+        burd = 2 if debt_gdp < 30 else (3 if debt_gdp < 60 else (4 if debt_gdp < 80 else (5 if debt_gdp < 100 else 6)))
+    elif int_rev <= 15:
+        burd = 2 if debt_gdp < 30 else (3 if debt_gdp < 60 else (4 if debt_gdp < 80 else (5 if debt_gdp < 100 else 6)))
+    else:
+        burd = 4 if debt_gdp < 30 else (5 if debt_gdp < 60 else 6)
+
+    final = (perf + burd) / 2
+    if flex == "High": final = max(1, final - 0.5)
+    if flex == "Low":  final = min(6, final + 0.5)
+    return final, perf, burd
+
+
+def score_external(gefn, niip, car_receipts=20, reserves_months=6.0,
+                   currency="Standard"):
+    """
+    Aligned to S&P Table 4.
+    GEFN thresholds: <50 / 50-75 / 75-100 / 100-150 / >150
+    NIIP thresholds: >0 / 0 to -20 / -20 to -100 / -100 to -150 / <-150
+    Reserves below 6 months → worsen liquidity by 1.
+    Currency status → uplift for reserve/actively traded.
+    """
+    # ── Liquidity score from GEFN (Table 4 column headers) ───────────────────
+    if gefn <= 50:    l_s = 1
+    elif gefn <= 75:  l_s = 2
+    elif gefn <= 100: l_s = 3
+    elif gefn <= 150: l_s = 4
+    else:             l_s = 5
+
+    # ── Reserves adjustment ───────────────────────────────────────────────────
+    # Reserves < 3 months = critically low → worsen by 1
+    # Reserves < 6 months = below adequacy → no bonus, slight pressure
+    # Reserves > 6 months = adequate → improve by 1
+    if reserves_months < 3:   l_s = min(6, l_s + 1)
+    elif reserves_months > 6: l_s = max(1, l_s - 1)
+
+    # ── Debt position from NIIP (Table 4 row headers) ─────────────────────────
+    if niip >= 0:      d_s = 1   # net creditor
+    elif niip > -20:   d_s = 2   # slight net debtor
+    elif niip > -100:  d_s = 3   # moderate net debtor
+    elif niip > -150:  d_s = 4   # large net debtor
+    else:              d_s = 5   # very large net debtor
+
+    # ── Currency status uplift (para. 46-51) ─────────────────────────────────
+    if currency == "Reserve":          bonus = -2
+    elif currency == "ActivelyTraded": bonus = -1
+    else:                              bonus = 0
+
+    score = max(1, min(6, (l_s + d_s) / 2 + bonus))
+    return score, l_s, d_s
+
 
 def score_monetary(regime, credibility, inflation, depth):
-    """Skoring pilar Moneter berdasarkan kredibilitas dan tingkat inflasi."""
-    if inflation <= 3 and depth > 40 and credibility == "High": return 2
-    if regime == "Floating" and inflation <= 10: return 3
-    return 5
+    """
+    Table 8A (FX regime, 40%) + Table 8B (credibility, 60%) per para. 111.
+    Credibility thresholds aligned to Table 8B descriptions.
+    """
+    regime_scores = {
+        "Reserve":          1,
+        "Floating":         2,
+        "ManagedFloat":     3,
+        "Peg":              4,
+        "CurrencyBoard":    5,
+        "NoLocalCurrency":  6,
+    }
+    fx = regime_scores.get(regime, 2)
+
+    # Credibility — Table 8B: depth threshold is 50% of GDP (combined credit+bonds)
+    if inflation <= 5 and depth > 50:   cred_s = 2   # score 1 reserved for reserve currency
+    elif inflation <= 8 and depth > 30: cred_s = 3
+    elif inflation <= 10:               cred_s = 4
+    elif inflation <= 20:               cred_s = 5
+    else:                               cred_s = 6
+
+    return round(fx * 0.4 + cred_s * 0.6, 1)
+
+def score_supplemental(s_inst, s_ext, s_fis_burd, debt_gdp, gefn, 
+                       liquid_assets_gdp=0, event_risk=False):
+    """
+    Computes S&P Supplemental Adjustment Factors per para. 125-128.
+    Returns:
+        adjustment (int): net notch adjustment (negative = downgrade, positive = upgrade)
+        factors (list): list of dicts describing each factor triggered
+    """
+    adjustment = 0
+    factors = []
+
+    # ── NEGATIVE: Institutional cap ──────────────────────────────────────────
+    # Para 126: Inst=6 → cannot be rated above BB+ (capped, not a notch adjustment)
+    # Para 126: Inst=6 AND debt burden ≥ 5 → cannot be rated above B+
+    # These are handled as caps later in get_indicative_rating_with_supplemental()
+
+    # ── NEGATIVE: Extremely weak external liquidity ───────────────────────────
+    # Para 126: GEFN substantially worse than table 4 worst level (>150%)
+    if gefn > 200:
+        adjustment -= 2
+        factors.append({
+            "type": "negative",
+            "factor": "Extremely Weak External Liquidity",
+            "detail": f"GEFN of {gefn:.1f}% is substantially above the 150% worst-tier threshold.",
+            "impact": "–2 notches"
+        })
+    elif gefn > 150:
+        adjustment -= 1
+        factors.append({
+            "type": "negative",
+            "factor": "Very Weak External Liquidity",
+            "detail": f"GEFN of {gefn:.1f}% exceeds the 150% worst-tier threshold.",
+            "impact": "–1 notch"
+        })
+
+    # ── NEGATIVE: Extremely high fiscal debt burden ───────────────────────────
+    # Para 126: debt burden score at worst AND deteriorating
+    if s_fis_burd >= 6 and debt_gdp > 100:
+        adjustment -= 1
+        factors.append({
+            "type": "negative",
+            "factor": "Extremely High Fiscal Debt Burden",
+            "detail": f"Debt burden score {s_fis_burd:.0f}/6 with debt-to-GDP of {debt_gdp:.1f}% — "
+                      f"significantly worse than worst-tier benchmark.",
+            "impact": "–1 notch"
+        })
+
+    # ── NEGATIVE: Event risk ──────────────────────────────────────────────────
+    # Para 126: imminent/rapidly rising political risk, war, etc.
+    if event_risk:
+        adjustment -= 1
+        factors.append({
+            "type": "negative",
+            "factor": "Event Risk",
+            "detail": "Imminent or rapidly rising political/security risk identified.",
+            "impact": "–1 notch"
+        })
+
+    # ── POSITIVE: Very large liquid financial government assets ───────────────
+    # Para 128: net asset position AND liquid assets > 100% GDP → +1 notch uplift
+    if liquid_assets_gdp > 100 and debt_gdp < 0:
+        adjustment += 1
+        factors.append({
+            "type": "positive",
+            "factor": "Very Large Liquid Financial Government Assets",
+            "detail": f"Government in net asset position with liquid assets of "
+                      f"{liquid_assets_gdp:.1f}% GDP (>100% threshold).",
+            "impact": "+1 notch"
+        })
+
+    return adjustment, factors
+
+
+def apply_supplemental_caps(srm_rating, s_inst, s_fis_burd, adjustment):
+    """
+    Applies hard rating caps from para. 126 AFTER notch adjustments.
+    Returns the final capped rating and cap description if applied.
+    """
+    # Apply notch adjustment first
+    base_num = RATING_TO_NUM.get(srm_rating, 8)
+    adjusted_num = max(0, min(16, base_num + adjustment))
+
+    # Reverse lookup
+    NUM_TO_RATING = {v: k for k, v in RATING_TO_NUM.items()}
+    adjusted_rating = NUM_TO_RATING.get(adjusted_num, srm_rating)
+
+    cap_applied = None
+
+    # Cap 1: Institutional score = 6 → cannot exceed BB+ (num=6)
+    if s_inst >= 6:
+        if adjusted_num > 6:
+            adjusted_num = 6
+            adjusted_rating = "BB+"
+            cap_applied = "Institutional score of 6 caps rating at BB+"
+
+    # Cap 2: Institutional score = 6 AND debt burden score ≥ 5 → cannot exceed B+ (num=3)
+    if s_inst >= 6 and s_fis_burd >= 5:
+        if adjusted_num > 3:
+            adjusted_num = 3
+            adjusted_rating = "B+"
+            cap_applied = "Institutional score 6 + debt burden ≥ 5 caps rating at B+"
+
+    return adjusted_rating, cap_applied
 
 #### CHUNK 2
 
@@ -363,6 +543,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.write("---")
 
+# ── Methodology Reference ─────────────────────────────────────────────────────
+st.markdown("""
+<div style="background:#EFF6FF; border-left:4px solid #1E3A8A; border-radius:6px;
+            padding:10px 16px; margin-bottom:16px; font-size:13px; color:#1E3A8A;">
+    📖 <b>Methodology Reference:</b> This dashboard implements 
+    <a href="https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157" 
+       target="_blank" style="color:#1E3A8A; font-weight:600;">
+       S&P Global Ratings — Sovereign Rating Methodology
+    </a>
+    (Dec 2017, updated Oct 2024). All pillar scores, matrix lookups, and supplemental 
+    adjustment factors follow this criteria document. Scores are model-derived and do not 
+    constitute official S&P ratings.
+</div>
+""", unsafe_allow_html=True)
+
 import os
 
 # ── Default dataset path (relative to script location) ───────────────────────
@@ -416,25 +611,98 @@ if f_macro:
             # Kalkulasi Skor pilar berdasarkan logika terkalibrasi di Chunk 1
             s_inst = max(1.0, min(6.0, 6 - (float(r['WGI_Score']) / 20))) if pd.notna(r['WGI_Score']) else 3.5
             s_eco = score_economic(r['GDP_PC'], r['Growth'], "Standard")
-            s_fis, _, _ = score_fiscal(r['Debt_GDP'], r['Int_Rev'], r['Balance'], "Neutral")
-            s_ext, _, _ = score_external(r['GEFN'], r['NIIP_CAR'], 20, r['Reserves'])
+            s_fis, s_fis_perf, s_fis_burd = score_fiscal(r['Debt_GDP'], r['Int_Rev'], r['Balance'], "Neutral")
+            s_ext, s_liq, s_debt_pos = score_external(r['GEFN'], r['NIIP_CAR'], 20, r['Reserves'])
             s_mon = score_monetary("Floating", "High", r['CPI'], r['Fin_Depth'])
 
-            # Hitung koordinat Matrix dan Rating Indikatif
+            # Calculate metrix scores and initial SRM rating
             prof_ie = (s_inst + s_eco) / 2
             prof_fp = (s_fis + s_ext + s_mon) / 3
             srm_rating = get_indicative_rating(prof_ie, prof_fp)
-            
-            # Hitung selisih notch (Qualitative Overlay)
-            actual_val = RATING_TO_NUM.get(r['Actual_Rating'], 8)
-            srm_val = RATING_TO_NUM.get(srm_rating, 8)
-            qo = actual_val - srm_val
 
-            # Visualisasi Metrik Utama
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Calculated SRM (Matrix)", srm_rating)
-            m2.metric("Official S&P Rating", r['Actual_Rating'])
-            m3.metric("Qualitative Adjustment", f"{int(qo):+} Notch", delta=int(qo), delta_color="normal")
+            # ── Supplemental Adjustment Factors ──────────────────────────────
+            supp_adj, supp_factors = score_supplemental(
+                s_inst=s_inst,
+                s_ext=s_ext,
+                s_fis_burd=s_fis_burd,
+                debt_gdp=r['Debt_GDP'],
+                gefn=r['GEFN'],
+                liquid_assets_gdp=0,
+                event_risk=False,
+            )
+            final_indicative, cap_note = apply_supplemental_caps(
+                srm_rating, s_inst, s_fis_burd, supp_adj)
+
+            # ── Residual ±1 notch (what was previously called QO) ────────────
+            actual_val   = RATING_TO_NUM.get(str(r['Actual_Rating']).replace('*','').strip(), 8)
+            final_val    = RATING_TO_NUM.get(final_indicative, 8)
+            srm_val      = RATING_TO_NUM.get(srm_rating, 8)
+            residual_qo  = actual_val - final_val
+            qo           = residual_qo  # keep alias so downstream code doesn't break
+
+            # ── KPI metrics ──────────────────────────────────────────────────
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("SRM Matrix Output", srm_rating)
+            m2.metric("After Supplemental",
+                      final_indicative,
+                      delta=f"{int(supp_adj):+} notch" if supp_adj != 0 else "No adj.")
+            m3.metric("Official S&P Rating", r['Actual_Rating'])
+            m4.metric("Residual ±1 Notch",
+                      f"{int(residual_qo):+}",
+                      delta=int(residual_qo), delta_color="normal")
+            m5.metric("Supplemental Factors",
+                      f"{len(supp_factors)} triggered",
+                      delta="⚠️ Cap applied" if cap_note else "No cap")
+            
+            # ── SUPPLEMENTAL ADJUSTMENT FACTORS DISPLAY ───────────────────────
+            st.markdown("#### ⚡ Supplemental Adjustment Factors")
+            st.caption(
+                "Applied **after** the SRM matrix per S&P methodology para. 125–128. "
+                "Represents extreme conditions and hard rating caps."
+            )
+
+            if not supp_factors and not cap_note:
+                st.success(
+                    "✅ No supplemental adjustment factors triggered. "
+                    "Final indicative rating equals SRM matrix output."
+                )
+            else:
+                for f in supp_factors:
+                    color  = "#fee2e2" if f["type"] == "negative" else "#d1fae5"
+                    border = "#ef4444" if f["type"] == "negative" else "#10b981"
+                    icon   = "📉" if f["type"] == "negative" else "📈"
+                    st.markdown(f"""
+                    <div style="padding:12px;border-radius:8px;background:{color};
+                                border-left:5px solid {border};margin-bottom:8px;">
+                        <b>{icon} {f['factor']}</b>
+                        &nbsp;<span style="font-size:12px;font-weight:bold;
+                        color:{'#991b1b' if f['type']=='negative' else '#065f46'};">
+                        [{f['impact']}]</span><br>
+                        <span style="font-size:13px;">{f['detail']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                if cap_note:
+                    st.markdown(f"""
+                    <div style="padding:12px;border-radius:8px;background:#fef3c7;
+                                border-left:5px solid #f59e0b;margin-bottom:8px;">
+                        <b>🚧 Hard Rating Cap Applied</b><br>
+                        <span style="font-size:13px;">{cap_note}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div style="padding:12px;background:#f0f4ff;border-radius:8px;
+                        text-align:center;margin-top:4px;margin-bottom:8px;">
+                <b>SRM Matrix:</b> {srm_rating}
+                &nbsp;→&nbsp;
+                <b>After Supplemental ({int(supp_adj):+}):</b> {final_indicative}
+                &nbsp;→&nbsp;
+                <b>Official:</b> {r['Actual_Rating']}
+                &nbsp;|&nbsp;
+                <b>Residual ±1 notch:</b> {int(residual_qo):+}
+            </div>
+            """, unsafe_allow_html=True)
 
             st.markdown("#### 🔍 In-Depth Pillar Analysis")
 
@@ -652,27 +920,16 @@ if f_macro:
                 with col2:
                     st.markdown("#### 📐 QO Summary for This Sovereign")
 
-                    qo_label = "Upgrade" if qo > 0 else ("Penalty" if qo < 0 else "Neutral")
+                    qo_label = ("Upgrade" if residual_qo > 0 else ("Penalty" if residual_qo < 0 else "Neutral"))
                     qo_color = "#10b981" if qo > 0 else ("#ef4444" if qo < 0 else "#6b7280")
 
-                    st.markdown(f"""
-                    <div style="padding:20px; border-radius:10px; border-left: 6px solid {qo_color}; background:#f8f9fa; margin-bottom:16px;">
-                        <div style="font-size:13px; color:#666; margin-bottom:4px;">Net Qualitative Overlay</div>
-                        <div style="font-size:36px; font-weight:800; color:{qo_color};">{int(qo):+} Notch</div>
-                        <div style="font-size:14px; color:#444; margin-top:4px;">{qo_label} vs SRM output</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    st.markdown(f"""
-                    <div style="padding:16px; border-radius:8px; background:#f0f4ff; margin-bottom:12px;">
-                        <div style="font-size:13px; color:#666;">SRM Indicative Rating</div>
-                        <div style="font-size:24px; font-weight:700; color:#1e3a8a;">{srm_rating}</div>
-                    </div>
-                    <div style="padding:16px; border-radius:8px; background:#f0fdf4; margin-bottom:12px;">
-                        <div style="font-size:13px; color:#666;">Official S&P Rating (after QO)</div>
-                        <div style="font-size:24px; font-weight:700; color:#065f46;">{r['Actual_Rating']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown("### 🗣️ Residual ±1 Notch Adjustment Opportunities")
+                    st.markdown(
+                "These arguments target the **residual one-notch adjustment** (para. 15) "
+                "that S&P applies *after* the SRM matrix and supplemental factors. "
+                "This covers transitional dynamics, ESG factors, and over/underperformance "
+                "not captured elsewhere — **not** the supplemental adjustment factors above."
+            )
 
                     st.divider()
                     st.markdown("#### 📌 Interpretation Guide")
@@ -1829,6 +2086,12 @@ if f_macro:
             )
             st.divider()
 
+            st.caption(
+                "📖 Methodology: S&P Global Ratings — Sovereign Rating Methodology "
+                "(Dec 2017, updated Oct 2024). "
+                "https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157"
+            )
+
             # ── Download buttons ──────────────────────────────────────────────
             dl1, dl2 = st.columns(2)
 
@@ -1849,7 +2112,13 @@ if f_macro:
                             selected_metrics=briefing_metrics,
                             signals=signals,
                             qo_opportunities=qo_opportunities,
-                        )
+                            
+                            supp_adj=supp_adj,
+                            supp_factors=supp_factors,
+                            final_indicative=final_indicative,
+                            cap_note=cap_note,
+                    )
+                    
                     st.download_button(
                         label="⬇️ Download PDF",
                         data=pdf_buf,
@@ -1875,6 +2144,10 @@ if f_macro:
                             selected_metrics=briefing_metrics,
                             signals=signals,
                             qo_opportunities=qo_opportunities,
+                            supp_adj=supp_adj,
+                            supp_factors=supp_factors,
+                            final_indicative=final_indicative,
+                            cap_note=cap_note,
                         )
                     st.download_button(
                         label="⬇️ Download PowerPoint",
@@ -1897,6 +2170,11 @@ if f_macro:
             sim_div = sc1.selectbox("Economic Diversification", ["High", "Standard", "Low"], index = 1)
             sim_wgi = sc1.number_input("WGI Score (Governance)", value=float(r['WGI_Score']) if pd.notna(r['WGI_Score']) else 50.0, step=1.0)
 
+            sc1.markdown("### Supplemental Factors")
+            sim_event_risk     = sc1.toggle("Event Risk (imminent political/security risk)", value=False)
+            sim_liquid_assets  = sc1.number_input("Liquid Govt Assets (% GDP)", value=0.0, step=1.0,
+                                                   help="Values >100% with net asset position → +1 notch uplift")
+
             sc2.markdown("### Fiscal & Debt")
             sim_bal = sc2.number_input("Fiscal Balance (% GDP)", value=float(r['Balance']), step=0.1)
             sim_debt = sc2.number_input("Debt-to-GDP (%)", value=float(r['Debt_GDP']), step=0.5)
@@ -1910,28 +2188,91 @@ if f_macro:
             sim_depth = sc3.number_input("Financial Depth (0-100)", value=int(r['Fin_Depth']), step=1)
             sim_regime = sc3.selectbox("FX Regime", ["Floating", "Fixed/Managed"])
 
-            # Kalkulasi Ulang Hasil Simulasi
+            # ── Recalculate pillar scores ─────────────────────────────────────
             p_inst_sim = max(1.0, min(6.0, 6 - (sim_wgi / 20)))
-            p_eco_sim = score_economic(sim_gdp, sim_growth, sim_div)
-            p_fis_sim, _, _ = score_fiscal(sim_debt, sim_int, sim_bal, sim_flex)
+            p_eco_sim  = score_economic(sim_gdp, sim_growth, sim_div)
+            p_fis_sim, p_fis_perf_sim, p_fis_burd_sim = score_fiscal(
+                sim_debt, sim_int, sim_bal, sim_flex)
             p_ext_sim, _, _ = score_external(sim_gefn, sim_niip, 20, r['Reserves'])
-            p_mon_sim = score_monetary(sim_regime, "High", sim_cpi, sim_depth)
+            p_mon_sim  = score_monetary(sim_regime, "High", sim_cpi, sim_depth)
 
-            # Hasil Profil Gabungan Simulasi
-            res_ie = (p_inst_sim + p_eco_sim) / 2
-            res_fp = (p_fis_sim + p_ext_sim + p_mon_sim) / 3
+            # ── IE / FP profiles & SRM matrix ────────────────────────────────
+            res_ie     = (p_inst_sim + p_eco_sim) / 2
+            res_fp     = (p_fis_sim + p_ext_sim + p_mon_sim) / 3
             sim_rating = get_indicative_rating(res_ie, res_fp)
-            
-            # Visualisasi Hasil (Progress Bar sebagai Mock Gauge)
-            rating_val = RATING_TO_NUM.get(sim_rating, 0)
-            progress_val = rating_val / 16.0 # Skala 0 hingga AAA(16)
-            
+
+            # ── Supplemental Adjustment Factors ──────────────────────────────
+            sim_supp_adj, sim_supp_factors = score_supplemental(
+                s_inst          = p_inst_sim,
+                s_ext           = p_ext_sim,
+                s_fis_burd      = p_fis_burd_sim,
+                debt_gdp        = sim_debt,
+                gefn            = sim_gefn,
+                liquid_assets_gdp = sim_liquid_assets,
+                event_risk      = sim_event_risk,
+            )
+            sim_final, sim_cap = apply_supplemental_caps(
+                sim_rating, p_inst_sim, p_fis_burd_sim, sim_supp_adj)
+
+            # ── Progress bar (based on final post-supplemental rating) ────────
+            rating_val   = RATING_TO_NUM.get(sim_final, 0)
+            progress_val = rating_val / 16.0
+
             st.write("---")
-            st.markdown(f"<h2 style='text-align: center;'>Simulated Rating Output: <span style='color: #10B981;'>{sim_rating}</span></h2>", unsafe_allow_html=True)
+
+            # ── Rating derivation flow ────────────────────────────────────────
+            st.markdown(f"""
+            <div style="text-align:center; margin-bottom:12px;">
+                <span style="font-size:14px; color:#64748B;">SRM Matrix</span><br>
+                <span style="font-size:28px; font-weight:800; color:#6366f1;">{sim_rating}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if sim_supp_adj != 0 or sim_cap:
+                st.markdown(f"""
+                <div style="text-align:center; margin-bottom:12px;">
+                    <span style="font-size:13px; color:#64748B;">
+                        After Supplemental Adj. ({int(sim_supp_adj):+} notch)
+                        {'&nbsp;|&nbsp;🚧 ' + sim_cap if sim_cap else ''}
+                    </span><br>
+                    <span style="font-size:36px; font-weight:800; color:#10B981;">{sim_final}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="text-align:center; margin-bottom:12px;">
+                    <span style="font-size:13px; color:#64748B;">
+                        No supplemental adjustments triggered
+                    </span><br>
+                    <span style="font-size:36px; font-weight:800; color:#10B981;">{sim_final}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
             st.progress(progress_val)
-            
+
+            # ── Profiles ──────────────────────────────────────────────────────
             ic1, ic2 = st.columns(2)
             ic1.info(f"**Institutional & Economic Profile:** {res_ie:.2f}")
             ic2.info(f"**Flexibility & Performance Profile:** {res_fp:.2f}")
+
+            # ── Show triggered supplemental factors ───────────────────────────
+            if sim_supp_factors:
+                st.markdown("##### ⚡ Supplemental Factors Triggered")
+                for f in sim_supp_factors:
+                    color  = "#fee2e2" if f["type"] == "negative" else "#d1fae5"
+                    border = "#ef4444" if f["type"] == "negative" else "#10b981"
+                    icon   = "📉"      if f["type"] == "negative" else "📈"
+                    st.markdown(f"""
+                    <div style="padding:10px;border-radius:8px;background:{color};
+                                border-left:4px solid {border};margin-bottom:6px;">
+                        <b>{icon} {f['factor']}</b>
+                        &nbsp;<span style="font-size:12px;font-weight:bold;
+                        color:{'#991b1b' if f['type']=='negative' else '#065f46'};">
+                        [{f['impact']}]</span><br>
+                        <span style="font-size:12px;">{f['detail']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.success("✅ No supplemental adjustment factors triggered.")
 else:
     st.info("👋 Welcome! Please upload the S&P Macro dataset to begin. Reference WGI data will be loaded automatically from the cloud.")
