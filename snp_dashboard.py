@@ -640,6 +640,8 @@ if f_macro:
             residual_qo  = actual_val - final_val
             qo           = residual_qo  # keep alias so downstream code doesn't break
 
+            
+
             # ── KPI metrics ──────────────────────────────────────────────────
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("SRM Matrix Output", srm_rating)
@@ -2101,22 +2103,21 @@ if f_macro:
                 if st.button("⚙️ Generate PDF", use_container_width=True):
                     with st.spinner("Generating PDF..."):
                         pdf_buf = generate_pdf(
-                            target=target, r=r,
-                            srm_rating=srm_rating, qo=qo,
-                            s_inst=s_inst, s_eco=s_eco,
-                            s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
-                            prof_ie=prof_ie, prof_fp=prof_fp,
-                            comp_list=briefing_comp_list,
-                            sel_nations=briefing_nations,
-                            trend_df=briefing_trend_df,
-                            selected_metrics=briefing_metrics,
-                            signals=signals,
-                            qo_opportunities=qo_opportunities,
-                            
-                            supp_adj=supp_adj,
-                            supp_factors=supp_factors,
-                            final_indicative=final_indicative,
-                            cap_note=cap_note,
+                        target=target, r=r,
+                        srm_rating=srm_rating, qo=qo,
+                        s_inst=s_inst, s_eco=s_eco,
+                        s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
+                        prof_ie=prof_ie, prof_fp=prof_fp,
+                        comp_list=briefing_comp_list,
+                        sel_nations=briefing_nations,
+                        trend_df=briefing_trend_df,
+                        selected_metrics=briefing_metrics,
+                        signals=signals,
+                        qo_opportunities=qo_opportunities,
+                        supp_adj=_supp_adj,
+                        supp_factors=_supp_factors,
+                        final_indicative=_final_indicative,
+                        cap_note=_cap_note,
                     )
                     
                     st.download_button(
@@ -2133,22 +2134,22 @@ if f_macro:
                 if st.button("⚙️ Generate PowerPoint", use_container_width=True):
                     with st.spinner("Generating PowerPoint..."):
                         pptx_buf = generate_pptx(
-                            target=target, r=r,
-                            srm_rating=srm_rating, qo=qo,
-                            s_inst=s_inst, s_eco=s_eco,
-                            s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
-                            prof_ie=prof_ie, prof_fp=prof_fp,
-                            comp_list=briefing_comp_list,
-                            sel_nations=briefing_nations,
-                            trend_df=briefing_trend_df,
-                            selected_metrics=briefing_metrics,
-                            signals=signals,
-                            qo_opportunities=qo_opportunities,
-                            supp_adj=supp_adj,
-                            supp_factors=supp_factors,
-                            final_indicative=final_indicative,
-                            cap_note=cap_note,
-                        )
+                        target=target, r=r,
+                        srm_rating=srm_rating, qo=qo,
+                        s_inst=s_inst, s_eco=s_eco,
+                        s_fis=s_fis, s_ext=s_ext, s_mon=s_mon,
+                        prof_ie=prof_ie, prof_fp=prof_fp,
+                        comp_list=briefing_comp_list,
+                        sel_nations=briefing_nations,
+                        trend_df=briefing_trend_df,
+                        selected_metrics=briefing_metrics,
+                        signals=signals,
+                        qo_opportunities=qo_opportunities,
+                        supp_adj=_supp_adj,
+                        supp_factors=_supp_factors,
+                        final_indicative=_final_indicative,
+                        cap_note=_cap_note,
+                    )
                     st.download_button(
                         label="⬇️ Download PowerPoint",
                         data=pptx_buf,
