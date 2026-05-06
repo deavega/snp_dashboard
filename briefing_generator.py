@@ -510,6 +510,103 @@ def generate_pdf(target, r, srm_rating, qo,
     # ── SECTION 3 — RECOMMENDATION ────────────────────────────────────────────
     story.append(Paragraph("3. Recommendation", st_h2))
 
+    # ── Executive Summary ─────────────────────────────────────────────────────
+    strength_sigs  = [s for s in signals if s["type"] == "strength"]
+    moderate_sigs  = [s for s in signals if s["type"] == "moderate"]
+    weakness_sigs  = [s for s in signals if s["type"] == "weakness"]
+
+    upgrade_count  = len(strength_sigs)
+    moderate_count = len(moderate_sigs)
+    weakness_count = len(weakness_sigs)
+
+    top_strengths  = [s['metric'] for s in strength_sigs][:3]
+    top_weaknesses = [s['metric'] for s in weakness_sigs][:3]
+
+    strength_text  = (f"Key strengths include {', '.join(top_strengths)}."
+                      if top_strengths else "No material strengths identified.")
+    weakness_text  = (f"Key areas of concern are {', '.join(top_weaknesses)}."
+                      if top_weaknesses else "No material weaknesses identified.")
+
+    if weakness_count == 0 and upgrade_count >= 3:
+        trajectory     = "Upgrade Candidate"
+        traj_bg        = RL_GREEN
+    elif weakness_count >= 3:
+        trajectory     = "Downgrade Risk"
+        traj_bg        = RL_RED
+    elif weakness_count >= 1 and moderate_count >= 2:
+        trajectory     = "Stable with Caution"
+        traj_bg        = RL_YELLOW
+    else:
+        trajectory     = "Broadly Stable"
+        traj_bg        = colors.HexColor("#EFF6FF")
+
+    if qo > 0:
+        qo_exec = (f"S&P's committee applied a +{int(qo)}-notch residual adjustment above "
+                   f"the post-supplemental indicative rating of {final_indicative}, "
+                   f"recognising positive factors beyond the quantitative model.")
+    elif qo < 0:
+        qo_exec = (f"S&P's committee applied a {int(qo)}-notch residual adjustment below "
+                   f"the post-supplemental indicative of {final_indicative}, "
+                   f"reflecting hidden risks not captured by the model.")
+    else:
+        qo_exec = (f"The official rating {r['Actual_Rating']} aligns with the "
+                   f"post-supplemental indicative {final_indicative} — no residual adjustment applied.")
+
+    if supp_factors:
+        supp_exec = (f"Supplemental factors triggered: "
+                     f"{', '.join([f['factor'] for f in supp_factors])} "
+                     f"({int(supp_adj):+} notch from SRM output of {srm_rating}).")
+    elif cap_note:
+        supp_exec = f"Hard cap applied: {cap_note}."
+    else:
+        supp_exec = (f"No supplemental factors triggered — SRM output {srm_rating} "
+                     f"carried through unchanged.")
+
+    if trajectory == "Broadly Stable":
+        closing = ("The overall profile supports the current rating with potential "
+                   "for upgrade if key weaknesses are addressed.")
+    elif trajectory == "Stable with Caution":
+        closing = ("The profile warrants close monitoring — deterioration in watch "
+                   "areas could trigger a negative outlook.")
+    elif trajectory == "Upgrade Candidate":
+        closing = ("The strong fundamental profile positions this sovereign for a "
+                   "potential upgrade in the near to medium term.")
+    else:
+        closing = ("Sustained weakness across multiple pillars creates meaningful "
+                   "downgrade risk if policy correction is not forthcoming.")
+
+    summary_text = (
+        f"{target} holds an official S&P rating of {r['Actual_Rating']}, derived from "
+        f"an SRM matrix output of {srm_rating} (IE: {prof_ie:.2f}, FP: {prof_fp:.2f}). "
+        f"{supp_exec} {qo_exec} "
+        f"Across {len(signals)} indicator signals: {upgrade_count} strong, "
+        f"{moderate_count} moderate, {weakness_count} requiring attention. "
+        f"{strength_text} {weakness_text} {closing}"
+    )
+
+    # Trajectory label box
+    traj_table = Table(
+        [[Paragraph(f"Rating Trajectory: {trajectory}", ParagraphStyle(
+            "traj", fontSize=10, fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#065f46" if trajectory=="Upgrade Candidate"
+                       else ("#991b1b" if trajectory=="Downgrade Risk"
+                       else ("#78350f" if trajectory=="Stable with Caution"
+                       else "#1e3a8a")))))]],
+        colWidths=[17.4*cm]
+    )
+    traj_table.setStyle(TableStyle([
+        ('BACKGROUND',    (0,0), (-1,-1), traj_bg),
+        ('TOPPADDING',    (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+    ]))
+    story.append(traj_table)
+    story.append(vsp(4))
+    story.append(Paragraph(summary_text, st_body))
+    story.append(vsp(8))
+
+
     strength_sigs  = [s for s in signals if s["type"] == "strength"]
     moderate_sigs  = [s for s in signals if s["type"] == "moderate"]
     weakness_sigs  = [s for s in signals if s["type"] == "weakness"]
@@ -735,6 +832,13 @@ def generate_pdf(target, r, srm_rating, qo,
          f"indicative rating — no residual adjustment was applied by S&P's rating committee.</i>"),
         st_small))
     
+    story.append(Paragraph(
+        f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
+        f"Generated {datetime.now().strftime('%d %B %Y')} | "
+        f"Methodology: S&P Global Ratings Sovereign Rating Criteria (Dec 2017, updated Oct 2024) — "
+        f"spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157</i>",
+        st_small))
+
     story.append(Paragraph(
         f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
         f"Generated {datetime.now().strftime('%d %B %Y')}</i>",
@@ -1041,42 +1145,93 @@ def generate_pptx(target, r, srm_rating, qo,
                     x_pos = 0.3 + j * 6.5
                     add_image_buf(sl, cbuf, x_pos, 0.85, 6.3, 6.2)
 
-    # ── SLIDE: RECOMMENDATION ─────────────────────────────────────────────────
+    # ── SLIDE: RECOMMENDATION EXECUTIVE SUMMARY ───────────────────────────────
     sl = blank_slide()
     sl.background.fill.solid()
     sl.background.fill.fore_color.rgb = rgb("F8FAFC")
     add_rect(sl, 0, 0, 13.33, 0.7, "1E3A8A")
-    add_text(sl, "3. Recommendation — Strengths & Weaknesses",
+    add_text(sl, "3. Recommendation — Executive Summary",
              0.3, 0.1, 12, 0.5, size=14, bold=True, color="FFFFFF")
 
-    weakness_sigs = [s for s in signals if s["type"] == "weakness"]
-    strength_sigs = [s for s in signals if s["type"] == "strength"]
+    # Recompute counts for pptx
+    strength_sigs_p  = [s for s in signals if s["type"] == "strength"]
+    moderate_sigs_p  = [s for s in signals if s["type"] == "moderate"]
+    weakness_sigs_p  = [s for s in signals if s["type"] == "weakness"]
+    upgrade_count_p  = len(strength_sigs_p)
+    moderate_count_p = len(moderate_sigs_p)
+    weakness_count_p = len(weakness_sigs_p)
 
-    # Left: weaknesses
-    add_rect(sl, 0.2, 0.8, 6.2, 0.4, "fee2e2")
-    add_text(sl, f"❌ Key Weaknesses ({len(weakness_sigs)})",
-             0.3, 0.83, 6, 0.35, size=11, bold=True, color="991b1b")
-    y_w = 1.3
-    for s in weakness_sigs[:5]:
-        add_rect(sl, 0.2, y_w, 6.2, 0.62, "fff5f5", line_hex="fca5a5", line_w=Pt(0.5))
-        add_text(sl, f"[{s['pillar']}] {s['metric']} — {s['value']}",
-                 0.3, y_w + 0.02, 6.0, 0.25, size=8, bold=True, color="991b1b")
-        add_text(sl, s["action"][:90],
-                 0.3, y_w + 0.27, 6.0, 0.3, size=7.5, color="374151")
-        y_w += 0.68
+    top_str_p = [s['metric'] for s in strength_sigs_p][:3]
+    top_wk_p  = [s['metric'] for s in weakness_sigs_p][:3]
 
-    # Right: strengths
-    add_rect(sl, 6.9, 0.8, 6.2, 0.4, "d1fae5")
-    add_text(sl, f"✅ Key Strengths ({len(strength_sigs)})",
-             7.0, 0.83, 6, 0.35, size=11, bold=True, color="065f46")
-    y_s = 1.3
-    for s in strength_sigs[:5]:
-        add_rect(sl, 6.9, y_s, 6.2, 0.62, "f0fdf4", line_hex="6ee7b7", line_w=Pt(0.5))
+    if weakness_count_p == 0 and upgrade_count_p >= 3:
+        traj_p = "Upgrade Candidate"; traj_col_p = "065f46"; traj_bg_p = "d1fae5"
+    elif weakness_count_p >= 3:
+        traj_p = "Downgrade Risk";    traj_col_p = "991b1b"; traj_bg_p = "fee2e2"
+    elif weakness_count_p >= 1 and moderate_count_p >= 2:
+        traj_p = "Stable with Caution"; traj_col_p = "78350f"; traj_bg_p = "fef3c7"
+    else:
+        traj_p = "Broadly Stable";   traj_col_p = "1e3a8a"; traj_bg_p = "EFF6FF"
+
+    # Trajectory banner
+    add_rect(sl, 0.3, 0.85, 12.7, 0.5, traj_bg_p, line_hex="CBD5E1", line_w=Pt(0.5))
+    add_text(sl, f"Rating Trajectory: {traj_p}",
+             0.4, 0.9, 12.5, 0.38, size=13, bold=True, color=traj_col_p)
+
+    # Rating derivation row
+    add_rect(sl, 0.3, 1.45, 12.7, 0.5, "F1F5F9", line_hex="CBD5E1", line_w=Pt(0.5))
+    add_text(sl,
+             f"SRM: {srm_rating}  →  Post-Supplemental: {final_indicative}  "
+             f"→  Official: {r['Actual_Rating']}  |  "
+             f"IE: {prof_ie:.2f}  FP: {prof_fp:.2f}  |  Residual: {int(qo):+} notch",
+             0.4, 1.5, 12.5, 0.38, size=10, color="1e3a8a", bold=True)
+
+    # Supplemental note
+    if supp_factors:
+        supp_p = (f"⚡ Supplemental: "
+                  f"{', '.join([f['factor'] for f in supp_factors])} "
+                  f"({int(supp_adj):+} notch)")
+    elif cap_note:
+        supp_p = f"🚧 Cap: {cap_note}"
+    else:
+        supp_p = f"✅ No supplemental factors — SRM {srm_rating} carried through unchanged"
+
+    add_rect(sl, 0.3, 2.05, 12.7, 0.4,
+             "fee2e2" if supp_factors else "d1fae5",
+             line_hex="CBD5E1", line_w=Pt(0.5))
+    add_text(sl, supp_p, 0.4, 2.1, 12.5, 0.3, size=9,
+             color="991b1b" if supp_factors else "065f46")
+
+    # Signal count cards
+    for i, (label, count, bg, fg) in enumerate([
+        (f"✅ Strong Signals",   upgrade_count_p,  "d1fae5", "065f46"),
+        (f"⚠️ Watch Areas",      moderate_count_p, "fef3c7", "78350f"),
+        (f"❌ Weak Signals",     weakness_count_p, "fee2e2", "991b1b"),
+    ]):
+        x = 0.3 + i * 4.3
+        add_rect(sl, x, 2.6, 4.0, 0.9, bg, line_hex="CBD5E1", line_w=Pt(0.5))
+        add_text(sl, str(count), x, 2.65, 4.0, 0.5,
+                 size=28, bold=True, color=fg, align=PP_ALIGN.CENTER)
+        add_text(sl, label, x, 3.15, 4.0, 0.28,
+                 size=9, color=fg, align=PP_ALIGN.CENTER)
+
+    # Key strengths
+    add_text(sl, "Key Strengths:", 0.3, 3.65, 6.2, 0.3, size=10, bold=True, color="065f46")
+    y_s = 3.98
+    for s in strength_sigs_p[:4]:
+        add_rect(sl, 0.3, y_s, 6.2, 0.45, "f0fdf4", line_hex="6ee7b7", line_w=Pt(0.3))
         add_text(sl, f"[{s['pillar']}] {s['metric']} — {s['value']}",
-                 7.0, y_s + 0.02, 6.0, 0.25, size=8, bold=True, color="065f46")
-        add_text(sl, s["action"][:90],
-                 7.0, y_s + 0.27, 6.0, 0.3, size=7.5, color="374151")
-        y_s += 0.68
+                 0.4, y_s + 0.05, 6.0, 0.35, size=8, color="065f46")
+        y_s += 0.5
+
+    # Key weaknesses
+    add_text(sl, "Key Weaknesses:", 6.9, 3.65, 6.2, 0.3, size=10, bold=True, color="991b1b")
+    y_w = 3.98
+    for s in weakness_sigs_p[:4]:
+        add_rect(sl, 6.9, y_w, 6.2, 0.45, "fff5f5", line_hex="fca5a5", line_w=Pt(0.3))
+        add_text(sl, f"[{s['pillar']}] {s['metric']} — {s['value']}",
+                 7.0, y_w + 0.05, 6.0, 0.35, size=8, color="991b1b")
+        y_w += 0.5
 
     # ── SLIDE: QO IN-DEPTH ────────────────────────────────────────────────────
     sl = blank_slide()
@@ -1139,7 +1294,12 @@ def generate_pptx(target, r, srm_rating, qo,
              1, 3.6, 11.33, 0.6, size=16, color="94A3B8", align=PP_ALIGN.CENTER)
     add_text(sl, f"Generated {date_str}  |  Based on S&P Global Methodology",
              1, 4.4, 11.33, 0.4, size=11, color="64748B", align=PP_ALIGN.CENTER)
-
+    add_text(sl,
+             "Methodology: S&P Global Ratings — Sovereign Rating Methodology (Dec 2017, updated Oct 2024)",
+             1, 5.0, 11.33, 0.3, size=9, color="64748B", align=PP_ALIGN.CENTER)
+    add_text(sl,
+             "spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157",
+             1, 5.3, 11.33, 0.3, size=9, color="1E3A8A", align=PP_ALIGN.CENTER)
     out = io.BytesIO()
     prs.save(out)
     out.seek(0)
