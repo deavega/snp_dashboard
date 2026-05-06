@@ -1286,10 +1286,27 @@ if f_macro:
                         if not filtered_metrics:
                             st.info("No metrics available for this pillar.")
                         else:
+                            # Default indicators aligned to key S&P monitoring metrics
+                            PREFERRED_DEFAULTS = [
+                                'GDP per capita (000s $)',
+                                'GG Revenues/GDP (%)',
+                                'GG interest expenditure/revenues (%)',
+                                'Gross GG debt/GDP (%)',
+                                'Real GDP growth (%)',
+                                'Usable reserves/CAPs (months)',
+                            ]
+
+                            # Only include defaults that are available in current pillar filter
+                            smart_defaults = [m for m in PREFERRED_DEFAULTS if m in filtered_metrics]
+
+                            # Fall back to first 2 if none of the preferred exist in current filter
+                            if not smart_defaults:
+                                smart_defaults = filtered_metrics[:2]
+
                             selected_metrics = st.multiselect(
                                 "Select Indicators to Plot",
                                 filtered_metrics,
-                                default=filtered_metrics[:2],
+                                default=smart_defaults,
                             )
 
                     if filtered_metrics and selected_metrics:
@@ -1621,8 +1638,101 @@ if f_macro:
                         )
 
         with tabs[2]: # RECOMMENDATION
-            st.markdown("<h2 style='color:#1E3A8A;'>💡 Sovereign Rating Recommendation</h2>", unsafe_allow_html=True)
+            st.markdown("<h2 style='color:#1E3A8A;'>Sovereign Rating Recommendation</h2>", unsafe_allow_html=True)
             st.markdown(f"<h4 style='color:#64748B;'>Data-driven advisory for <b>{target}</b> — based on S&P methodology signals</h4>", unsafe_allow_html=True)
+
+            # ── Executive Summary Paragraph ───────────────────────────────────
+            upgrade_count  = len([s for s in signals if s["type"] == "strength"])
+            moderate_count = len([s for s in signals if s["type"] == "moderate"])
+            weakness_count = len([s for s in signals if s["type"] == "weakness"])
+
+            # Trajectory verdict
+            if weakness_count == 0 and upgrade_count >= 3:
+                trajectory = "upgrade candidate"
+                traj_color = "#065f46"
+                traj_bg    = "#d1fae5"
+            elif weakness_count >= 3:
+                trajectory = "facing downgrade pressure"
+                traj_color = "#991b1b"
+                traj_bg    = "#fee2e2"
+            elif weakness_count >= 1 and moderate_count >= 2:
+                trajectory = "broadly stable with caution"
+                traj_color = "#78350f"
+                traj_bg    = "#fef3c7"
+            else:
+                trajectory = "broadly stable"
+                traj_color = "#1e3a8a"
+                traj_bg    = "#f0f4ff"
+
+            # Key strength and weakness labels for the summary
+            top_strengths = [s['metric'] for s in signals if s['type'] == 'strength'][:3]
+            top_weaknesses = [s['metric'] for s in signals if s['type'] == 'weakness'][:3]
+
+            strength_text = (
+                f"Key strengths include {', '.join(top_strengths)}."
+                if top_strengths else "No material strengths identified."
+            )
+            weakness_text = (
+                f"Key areas of concern are {', '.join(top_weaknesses)}."
+                if top_weaknesses else "No material weaknesses identified."
+            )
+
+            qo_label_exec = "upgrade" if qo > 0 else ("penalty" if qo < 0 else "neutral")
+            qo_text_exec  = (
+                f"S&P's rating committee applied a <b>+{int(qo)}-notch residual adjustment</b> "
+                f"above the post-supplemental indicative rating of <b>{final_indicative}</b>, "
+                f"recognising positive factors beyond what the quantitative model captures."
+                if qo > 0 else
+                f"S&P's rating committee applied a <b>{int(qo)}-notch residual adjustment</b> "
+                f"below the post-supplemental indicative rating of <b>{final_indicative}</b>, "
+                f"reflecting hidden risks not fully captured by the quantitative model."
+                if qo < 0 else
+                f"The official rating of <b>{r['Actual_Rating']}</b> aligns with the "
+                f"post-supplemental indicative rating of <b>{final_indicative}</b> — "
+                f"no residual committee adjustment was applied."
+            )
+
+            supp_text_exec = ""
+            if supp_factors:
+                supp_names = ", ".join([f['factor'] for f in supp_factors])
+                supp_text_exec = (
+                    f" Supplemental adjustment factors were triggered: <b>{supp_names}</b>, "
+                    f"resulting in a {int(supp_adj):+}-notch adjustment from the SRM output of "
+                    f"<b>{srm_rating}</b>."
+                )
+            elif cap_note:
+                supp_text_exec = f" A hard rating cap was applied: {cap_note}."
+            else:
+                supp_text_exec = (
+                    f" No supplemental adjustment factors were triggered — "
+                    f"the SRM matrix output of <b>{srm_rating}</b> carried through "
+                    f"to the post-supplemental stage unchanged."
+                )
+
+            st.markdown(f"""
+            <div style="padding:16px 20px; border-radius:10px; background:{traj_bg};
+                        border-left:5px solid {traj_color}; margin-bottom:20px;">
+                <div style="font-size:13px; color:{traj_color}; font-weight:700;
+                            margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+                    Rating Trajectory: {trajectory.title()}
+                </div>
+                <p style="font-size:13px; color:#1e293b; line-height:1.7; margin:0;">
+                    <b>{target}</b> holds an official S&P rating of <b>{r['Actual_Rating']}</b>,
+                    derived from an SRM matrix output of <b>{srm_rating}</b>
+                    (IE Profile: {prof_ie:.2f}, FP Profile: {prof_fp:.2f}).
+                    {supp_text_exec}
+                    {qo_text_exec}
+                    Across {len(signals)} indicator-level signals assessed,
+                    <b>{upgrade_count} are strong</b>, <b>{moderate_count} are moderate</b>,
+                    and <b>{weakness_count} require attention</b>.
+                    {strength_text} {weakness_text}
+                    {'The overall profile supports the current rating level with potential for upgrade if key weaknesses are addressed.' if trajectory == 'broadly stable' else
+                     'The profile warrants close monitoring — deterioration in watch areas could trigger a negative outlook.' if trajectory == 'broadly stable with caution' else
+                     'The strong fundamental profile positions this sovereign for a potential upgrade in the near to medium term.' if trajectory == 'upgrade candidate' else
+                     'Sustained weakness across multiple pillars creates meaningful downgrade risk if policy correction is not forthcoming.'}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
             # ── Re-use scores from tabs[0] ────────────────────────────
             pillars = {
