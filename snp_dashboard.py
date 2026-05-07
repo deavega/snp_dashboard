@@ -549,8 +549,59 @@ if not st.session_state.authenticated:
 
 
 # Branding Header
-st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Sovereign Rating Monitoring</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center; color: #64748B;'>Based on S&P Global Methodology</h4>", unsafe_allow_html=True)
+# ── Background image header ───────────────────────────────────────────────────
+import base64
+
+def get_base64_image(image_path):
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+HEADER_IMG_PATH = os.path.join(os.path.dirname(__file__), "assets", "background.png")
+
+if os.path.exists(HEADER_IMG_PATH):
+    img_b64 = get_base64_image(HEADER_IMG_PATH)
+    st.markdown(f"""
+    <div style="
+        background-image: url('data:image/png;base64,{img_b64}');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        border-radius: 12px;
+        padding: 48px 24px;
+        margin-bottom: 16px;
+        position: relative;
+    ">
+        <!-- Dark overlay for text readability -->
+        <div style="
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 30, 80, 0.55);
+            border-radius: 12px;
+        "></div>
+        <!-- Text on top of overlay -->
+        <div style="position: relative; z-index: 1; text-align: center;">
+            <h1 style="color: #FFFFFF; font-size: 2.4rem; font-weight: 800;
+                       margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+                Sovereign Rating Monitoring
+            </h1>
+            <h4 style="color: #CADCFC; font-size: 1.1rem; font-weight: 400;
+                       margin: 8px 0 0 0; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
+                Based on S&amp;P Global Methodology
+            </h4>
+        </div>
+    </div>
+    <div style="text-align:right; font-size:10px; color:#94A3B8; margin-top:3px; margin-bottom:8px;">
+        Photo by <a href="https://unsplash.com/id/@spensersembrat" target="_blank" 
+        style="color:#94A3B8;">Spenser Sembrat</a> on 
+        <a href="https://unsplash.com" target="_blank" style="color:#94A3B8;">Unsplash</a>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    # Fallback if image not found
+    
+    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Sovereign Rating Monitoring</h1>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #64748B;'>Based on S&P Global Methodology</h4>", unsafe_allow_html=True)
+
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"] p {
