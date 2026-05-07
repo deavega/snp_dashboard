@@ -598,7 +598,7 @@ if os.path.exists(HEADER_IMG_PATH):
     """, unsafe_allow_html=True)
 else:
     # Fallback if image not found
-    
+
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Sovereign Rating Monitoring</h1>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #64748B;'>Based on S&P Global Methodology</h4>", unsafe_allow_html=True)
 
@@ -785,6 +785,71 @@ if f_macro:
                 <b>Residual ±1 notch:</b> {int(residual_qo):+}
             </div>
             """, unsafe_allow_html=True)
+
+            # ── Methodology Plain Language Explainer ──────────────────────────
+            with st.expander("📖 How does S&P rate a sovereign? — Plain language guide", expanded=False):
+                st.markdown(f"""
+                #### How S&P Arrives at a Sovereign Rating
+
+                S&P rates a country's ability and willingness to repay its debt to commercial creditors.
+                The process has **three layers**, applied in sequence:
+
+                ---
+
+                **Layer 1 — The Sovereign Rating Model (SRM Matrix)**
+
+                S&P scores five pillars on a scale of 1 (strongest) to 6 (weakest):
+
+                | Pillar | What it measures | Weight |
+                |--------|-----------------|--------|
+                | 🏛 Institutional | Quality of governance, rule of law, policy predictability | 25% |
+                | 📈 Economic | GDP per capita, growth prospects, economic diversity | 25% |
+                | 💰 Fiscal | Deficit, debt burden, interest costs vs revenues | 16.7% |
+                | 🌐 External | Ability to earn foreign currency, reserve adequacy, net debt position | 16.7% |
+                | 🏦 Monetary | Central bank credibility, exchange rate flexibility, inflation | 16.7% |
+
+                The five scores combine into two profiles:
+                - **IE Profile** = (Institutional + Economic) ÷ 2 → currently **{prof_ie:.2f}**
+                - **FP Profile** = (Fiscal + External + Monetary) ÷ 3 → currently **{prof_fp:.2f}**
+
+                These two numbers are looked up in a **6×11 matrix** to produce the indicative rating → **{srm_rating}**
+
+                ---
+
+                **Layer 2 — Supplemental Adjustment Factors (para. 125–128)**
+
+                After the matrix, S&P checks for *extreme* conditions that can override the model:
+                - Extremely high external financing needs → downgrade
+                - Extremely high debt burden → downgrade
+                - Institutional score = 6 → hard cap at BB+
+                - Very large liquid government assets (>100% GDP) → upgrade
+
+                {'✅ No supplemental factors triggered for ' + target + ' — SRM output carries through unchanged.' if not supp_factors and not cap_note else
+                 '⚠️ Supplemental factor triggered: ' + (', '.join([f["factor"] for f in supp_factors]) if supp_factors else cap_note or '')}
+
+                Post-supplemental indicative rating → **{final_indicative}**
+
+                ---
+
+                **Layer 3 — Residual ±1 Notch Adjustment (para. 15)**
+
+                The rating committee can nudge the rating **up or down by one notch** based on qualitative judgment:
+                - Is the country a sustained outperformer vs peers? → +1 notch
+                - Are there hidden risks not captured by the numbers? → −1 notch
+                - Are there transitional factors (e.g. new resource discovery, reform momentum)? → ±1 notch
+
+                For **{target}**: residual adjustment = **{int(qo):+} notch** → Official rating **{r['Actual_Rating']}**
+
+                ---
+
+                **In simple terms:**
+                > Think of it like a school report card. The SRM matrix is the exam score.
+                > Supplemental factors are the teacher saying *"this student has a serious discipline issue"* or
+                > *"this student has exceptional talent"*. The residual adjustment is the principal's final note
+                > on the report — based on overall impression, trajectory, and things the exam didn't fully capture.
+
+                📖 Full methodology: [S&P Sovereign Rating Criteria](https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157)
+                """)    
 
             st.markdown("#### 🔍 In-Depth Pillar Analysis")
 
