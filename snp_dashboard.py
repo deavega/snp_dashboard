@@ -2656,6 +2656,19 @@ if f_macro:
             sim_event_risk     = sc1.toggle("Event Risk (imminent political/security risk)", value=False)
             sim_liquid_assets  = sc1.number_input("Liquid Govt Assets (% GDP)", value=0.0, step=1.0,
                                                    help="Values >100% with net asset position → +1 notch uplift")
+            sc1.markdown("### Transitional Factors (para. 15)")
+            sim_resource_discovery = sc1.toggle(
+                "Significant Resource Discovery",
+                value=False,
+                help="Major gas/oil/mineral discovery expected to materially improve fiscal "
+                     "and external outlook within 3–5 years. Supports +1 residual notch argument."
+            )
+            sim_resource_magnitude = sc1.selectbox(
+                "Discovery Magnitude",
+                ["Large (>2% GDP revenue impact)", "Moderate (1–2% GDP)", "Small (<1% GDP)"],
+                index=0,
+                disabled=not sim_resource_discovery,
+            ) if sim_resource_discovery else None
 
             sc2.markdown("### Fiscal & Debt")
             sim_bal = sc2.number_input("Fiscal Balance (% GDP)", value=float(r['Balance']), step=0.1)
@@ -2673,9 +2686,51 @@ if f_macro:
             # ── Recalculate pillar scores ─────────────────────────────────────
             p_inst_sim = max(1.0, min(6.0, 6 - (sim_wgi / 20)))
             p_eco_sim  = score_economic(sim_gdp, sim_growth, sim_div)
+
+            # ── Resource discovery adjustment (para. 15 transitional factor) ──
+            resource_eco_adj  = 0
+            resource_ext_adj  = 0
+            resource_fis_adj  = 0
+            resource_narrative = ""
+
+            if sim_resource_discovery:
+                if sim_resource_magnitude and "Large" in sim_resource_magnitude:
+                    resource_eco_adj = -0.5   # better economic score
+                    resource_ext_adj = -0.5   # better external (future exports)
+                    resource_fis_adj = -0.5   # better fiscal (future revenues)
+                    resource_narrative = (
+                        "Large resource discovery — significant improvement to medium-term "
+                        "fiscal, external, and economic outlook. Supports para. 15 transitional "
+                        "positive argument for +1 residual notch in rating committee dialogue."
+                    )
+                elif sim_resource_magnitude and "Moderate" in sim_resource_magnitude:
+                    resource_eco_adj = -0.3
+                    resource_ext_adj = -0.3
+                    resource_fis_adj = 0
+                    resource_narrative = (
+                        "Moderate resource discovery — gradual improvement expected. "
+                        "Supports transitional positive narrative but insufficient alone "
+                        "for a full +1 notch residual adjustment without corroborating factors."
+                    )
+                else:
+                    resource_eco_adj = -0.2
+                    resource_narrative = (
+                        "Small resource discovery — limited macroeconomic impact. "
+                        "May support a transitional positive argument if combined with "
+                        "other improving factors."
+                    )
+
+            # Apply adjustments (capped at 1.0 floor)
+            p_eco_sim = max(1.0, p_eco_sim + resource_eco_adj)
+
             p_fis_sim, p_fis_perf_sim, p_fis_burd_sim = score_fiscal(
                 sim_debt, sim_int, sim_bal, sim_flex)
             p_ext_sim, _, _ = score_external(sim_gefn, sim_niip, 20, r['Reserves'])
+
+            # Apply resource discovery adjustments to fiscal and external
+            if sim_resource_discovery:
+                p_fis_sim = max(1.0, p_fis_sim + resource_fis_adj)
+                p_ext_sim = max(1.0, p_ext_sim + resource_ext_adj)
             p_mon_sim  = score_monetary(sim_regime, "High", sim_cpi, sim_depth)
 
             # ── IE / FP profiles & SRM matrix ────────────────────────────────
@@ -2736,6 +2791,31 @@ if f_macro:
             ic1, ic2 = st.columns(2)
             ic1.info(f"**Institutional & Economic Profile:** {res_ie:.2f}")
             ic2.info(f"**Flexibility & Performance Profile:** {res_fp:.2f}")
+
+            # ── Resource discovery transitional factor ────────────────────────
+            if sim_resource_discovery and resource_narrative:
+                st.markdown(f"""
+                <div style="padding:12px;border-radius:8px;background:#d1fae5;
+                            border-left:4px solid #10b981;margin-bottom:8px;">
+                    <b>⛽ Significant Resource Discovery — Para. 15 Transitional Factor</b><br>
+                    <span style="font-size:12px;">
+                        {resource_narrative}<br>
+                        <b>Score adjustments applied:</b>
+                        Economic {resource_eco_adj:+.1f} |
+                        Fiscal {resource_fis_adj:+.1f} |
+                        External {resource_ext_adj:+.1f}
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if "Large" in (sim_resource_magnitude or ""):
+                    st.info(
+                        "💡 **QO Narrative Opportunity:** In the S&P rating committee dialogue, "
+                        "argue that the discovery represents a transitional positive dynamic "
+                        "(para. 15) — improved fiscal revenue stream, stronger export outlook, "
+                        "and enhanced debt-bearing capacity — not yet captured in current-year "
+                        "quantitative metrics but material to medium-term creditworthiness."
+                    )
 
             # ── Show triggered supplemental factors ───────────────────────────
             if sim_supp_factors:
