@@ -830,9 +830,11 @@ if f_macro:
                         break
 
                 if _matrix_img:
-                    st.image(_matrix_img,
-                             caption="S&P Sovereign Rating Model (SRM) — Indicative Rating Matrix © S&P Global Ratings 2017",
-                             use_container_width=True)
+                    col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+                    with col_img2:
+                        st.image(_matrix_img,
+                                 caption="S&P Sovereign Rating Model (SRM) — Indicative Rating Matrix © S&P Global Ratings 2017",
+                                 use_container_width=True)
                 else:
                     # Fallback: load from base64 if file not found via path
                     st.caption(f"_Matrix image not found. Searched: {[str(p) for p in _possible_paths]}_")
