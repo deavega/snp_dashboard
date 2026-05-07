@@ -813,6 +813,31 @@ if f_macro:
                 - **FP Profile** = (Fiscal + External + Monetary) ÷ 3 → currently **{prof_fp:.2f}**
 
                 These two numbers are looked up in a **6×11 matrix** to produce the indicative rating → **{srm_rating}**
+                """)
+
+                # ── SRM Matrix image ──────────────────────────────────────────
+                import pathlib
+                # Try multiple possible paths
+                _possible_paths = [
+                    pathlib.Path(__file__).parent / "assets" / "srm_matrix.png",
+                    pathlib.Path("assets/srm_matrix.png"),
+                    pathlib.Path("./assets/srm_matrix.png"),
+                ]
+                _matrix_img = None
+                for _p in _possible_paths:
+                    if _p.exists():
+                        _matrix_img = str(_p)
+                        break
+
+                if _matrix_img:
+                    st.image(_matrix_img,
+                             caption="S&P Sovereign Rating Model (SRM) — Indicative Rating Matrix © S&P Global Ratings 2017",
+                             use_container_width=True)
+                else:
+                    # Fallback: load from base64 if file not found via path
+                    st.caption(f"_Matrix image not found. Searched: {[str(p) for p in _possible_paths]}_")
+
+                st.markdown(f"""
 
                 ---
 
