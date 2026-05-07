@@ -1480,17 +1480,23 @@ def generate_pptx(target, r, srm_rating, qo,
                  0.3, y_o, 12.5, 0.4, size=10, color="991b1b")
         y_o += 0.5
 
-    # Weaknesses note
-    if weaknesses_pptx and y_o < 6.8:
+    # Weaknesses note — only show if there's space on the slide
+    if weaknesses_pptx and y_o < 6.5:
         y_o += 0.15
-        add_text(sl, f"⚠️ Underperforming vs BBB peers ({len(weaknesses_pptx)} indicators — address to protect QO):",
-                 0.3, y_o, 12.5, 0.28, size=9, bold=True, color="991b1b")
-        y_o += 0.32
-        wk_txt = "  |  ".join([
-            f"{r2['label']}: {r2['t_val']:.1f} vs {r2['p_avg']:.1f} ({r2['diff']:+.1f})"
-            for r2 in weaknesses_pptx[:4]
-        ])
-        add_text(sl, wk_txt, 0.3, y_o, 12.5, 0.3, size=8, color="7f1d1d")
+        # Put header and content in a single contained box
+        wk_lines = [
+            f"{r2['label']}: {r2['t_val']:.1f} vs BBB avg {r2['p_avg']:.1f} ({r2['diff']:+.1f})"
+            for r2 in weaknesses_pptx[:3]
+        ]
+        wk_content = "  |  ".join(wk_lines)
+        box_h = 0.75
+        add_rect(sl, 0.3, y_o, 12.7, box_h, "fff5f5",
+                 line_hex="fca5a5", line_w=Pt(0.5))
+        add_text(sl,
+                 f"⚠️ Underperforming vs BBB peers ({len(weaknesses_pptx)} indicators):",
+                 0.4, y_o + 0.05, 12.5, 0.28, size=8, bold=True, color="991b1b")
+        add_text(sl, wk_content,
+                 0.4, y_o + 0.33, 12.5, 0.35, size=7.5, color="7f1d1d")
 
     # Footer slide
     sl = blank_slide()
