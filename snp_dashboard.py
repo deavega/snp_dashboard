@@ -1227,13 +1227,7 @@ if f_macro:
                 st.markdown("#### 📈 Historical & Forecast Indicator Trends")
                 st.caption("Data spans all available years from the uploaded dataset. Shaded years are estimates/forecasts.")
 
-                # trend_df already loaded above
                 if trend_df is None or trend_df.empty:
-                    st.warning("No trend data available.")
-                else:
-                    trend_filtered = trend_df[trend_df['Country'].isin(sel_nations)].copy()
-
-                if trend_df.empty:
                     st.warning("Could not extract trend data from this file.")
                 else:
                     # Filter to selected countries
