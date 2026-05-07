@@ -2090,11 +2090,16 @@ if f_macro:
                 RATING_TO_NUM.get('BBB',  8),
                 RATING_TO_NUM.get('BBB+', 9),
             ]
+            # Build a fast country→rating lookup dict to avoid repeated DataFrame filtering
+            rating_lookup = {
+                row['Country']: str(row['Actual_Rating']).replace('*','').strip()
+                for _, row in df.iterrows()
+                if pd.notna(row['Country']) and str(row['Country']).strip() not in ('nan','None','')
+            }
+
             peer_countries = [
-                c for c in df['Country'].tolist()
-                if RATING_TO_NUM.get(
-                    str(df[df['Country']==c]['Actual_Rating'].values[0]).replace('*','').strip(), -1
-                ) in peer_rating_nums
+                c for c in rating_lookup
+                if RATING_TO_NUM.get(rating_lookup.get(c, ''), -1) in peer_rating_nums
                 and c != target
             ]
 
