@@ -862,6 +862,94 @@ def generate_pdf(target, r, srm_rating, qo,
                 st_body))
             story.append(vsp(6))
 
+    # ── Selected Peer QO Context ──────────────────────────────────────────────
+    if len(comp_list) > 1:
+        story.append(Paragraph("Selected Peer QO Comparison", st_h3))
+        story.append(Paragraph(
+            "The table below shows the QO (residual ±1 notch) for each manually "
+            "selected peer country alongside their SRM output and profile scores.",
+            st_body))
+        story.append(vsp(4))
+
+        peer_rows = [["Country", "Actual", "SRM", "Post-Suppl.", "Residual QO", "IE Prof.", "FP Prof."]]
+        for c in comp_list:
+            peer_rows.append([
+                c["Country"],
+                c["_nr"]['Actual_Rating'],
+                c["_srm"],
+                c["_srm"],   # post-supplemental not computed for peers — use SRM
+                f"{int(c['_qo']):+}",
+                f"{c['_ie']:.2f}",
+                f"{c['_fp']:.2f}",
+            ])
+
+        peer_style = TableStyle([
+            ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
+            ('TEXTCOLOR',     (0,0), (-1,0), RL_WHITE),
+            ('FONTNAME',      (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE',      (0,0), (-1,-1), 9),
+            ('ALIGN',         (1,0), (-1,-1), 'CENTER'),
+            ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+            ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+            ('ROWBACKGROUNDS',(0,1), (-1,-1), [RL_LGREY, RL_WHITE]),
+            ('TOPPADDING',    (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ])
+
+        # Colour rating and QO cells
+        for ri, c in enumerate(comp_list, 1):
+            # Actual rating colour
+            rbg, _ = _rating_color(c["_nr"]['Actual_Rating'])
+            peer_style.add('BACKGROUND', (1, ri), (1, ri), rbg)
+            # SRM colour
+            sbg, _ = _rating_color(c["_srm"])
+            peer_style.add('BACKGROUND', (2, ri), (2, ri), sbg)
+            # QO colour
+            qo_val = int(c['_qo'])
+            qo_bg = RL_GREEN if qo_val > 0 else (RL_RED if qo_val < 0 else RL_WHITE)
+            peer_style.add('BACKGROUND', (4, ri), (4, ri), qo_bg)
+
+        story.append(Table(peer_rows,
+            colWidths=[3.5*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 2.2*cm, 2.2*cm],
+            style=peer_style))
+        story.append(vsp(6))
+
+        # QO delta narrative
+        target_qo   = int(comp_list[0]["_qo"]) if comp_list else 0
+        peer_qos    = [(c["Country"], int(c["_qo"])) for c in comp_list[1:]]
+        higher_peers = [f"{n} ({q:+})" for n, q in peer_qos if q > target_qo]
+        lower_peers  = [f"{n} ({q:+})" for n, q in peer_qos if q < target_qo]
+        equal_peers  = [f"{n} ({q:+})" for n, q in peer_qos if q == target_qo]
+
+        if higher_peers:
+            story.append(Paragraph(
+                f"<b>Peers with higher residual QO:</b> {', '.join(higher_peers)}. "
+                f"These peers receive more favourable qualitative adjustments than {target}, "
+                "suggesting room to strengthen the narrative on institutional quality, "
+                "contingent liability management, or fiscal flexibility.",
+                st_body))
+            story.append(vsp(4))
+
+        if lower_peers:
+            story.append(Paragraph(
+                f"<b>Peers with lower residual QO:</b> {', '.join(lower_peers)}. "
+                f"{target}'s relative QO position is stronger than these peers — "
+                "highlight this comparative advantage in rating dialogue.",
+                st_body))
+            story.append(vsp(4))
+
+        if equal_peers:
+            story.append(Paragraph(
+                f"<b>Peers with equal residual QO:</b> {', '.join(equal_peers)}. "
+                "S&P applies similar qualitative judgment to these sovereigns.",
+                st_body))
+            story.append(vsp(4))
+
+    # Footer
+    story.append(vsp(16))
+    story.append(hr())
+
+
     # Footer
     story.append(vsp(16))
     story.append(hr())
@@ -1255,6 +1343,87 @@ def generate_pptx(target, r, srm_rating, qo,
         _plt.close(fig)
         tbuf.seek(0)
         add_image_buf(sl, tbuf, 0.3, 1.3, 12.7, 4.0)
+
+    # ── SLIDE: SELECTED PEER QO COMPARISON ───────────────────────────────────
+    if len(comp_list) > 1:
+        sl = blank_slide()
+        sl.background.fill.solid()
+        sl.background.fill.fore_color.rgb = rgb("F8FAFC")
+        add_rect(sl, 0, 0, 13.33, 0.7, "0D9488")
+        add_text(sl, "4c. Selected Peer QO Comparison",
+                 0.3, 0.1, 12, 0.5, size=13, bold=True, color="FFFFFF")
+
+        # Build table as matplotlib image
+        import matplotlib.pyplot as _plt
+        col_labels = ["Country", "Actual", "SRM", "Residual QO", "IE", "FP"]
+        cell_data  = [
+            [c["Country"],
+             str(c["_nr"]['Actual_Rating']),
+             c["_srm"],
+             f"{int(c['_qo']):+}",
+             f"{c['_ie']:.2f}",
+             f"{c['_fp']:.2f}"]
+            for c in comp_list
+        ]
+
+        fig, ax = _plt.subplots(figsize=(13, max(2.5, len(comp_list) * 0.6 + 1)))
+        ax.axis("off")
+        tbl = ax.table(cellText=cell_data, colLabels=col_labels,
+                       loc="center", cellLoc="center")
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(10)
+        tbl.scale(1, 1.5)
+
+        # Colour cells
+        for ri, c in enumerate(comp_list):
+            qo_val = int(c['_qo'])
+            # QO column (index 3)
+            tbl[ri+1, 3].set_facecolor(
+                "#d1fae5" if qo_val > 0 else ("#fee2e2" if qo_val < 0 else "#F1F5F9"))
+            # Actual rating (index 1)
+            num = RATING_TO_NUM.get(str(c["_nr"]['Actual_Rating']).replace('*','').strip(), -1)
+            tbl[ri+1, 1].set_facecolor(
+                "#d1fae5" if num >= 10 else ("#fef3c7" if num >= 6 else "#fee2e2"))
+
+        fig.tight_layout()
+        tbuf = io.BytesIO()
+        fig.savefig(tbuf, format="png", dpi=150, bbox_inches="tight")
+        _plt.close(fig)
+        tbuf.seek(0)
+        add_image_buf(sl, tbuf, 0.5, 0.85, 12.3, 3.5)
+
+        # QO delta narrative text
+        target_qo    = int(comp_list[0]["_qo"]) if comp_list else 0
+        peer_qos     = [(c["Country"], int(c["_qo"])) for c in comp_list[1:]]
+        higher_peers = [f"{n}({q:+})" for n, q in peer_qos if q > target_qo]
+        lower_peers  = [f"{n}({q:+})" for n, q in peer_qos if q < target_qo]
+
+        y_txt = 4.5
+        if higher_peers:
+            add_rect(sl, 0.3, y_txt, 12.7, 0.5, "fef3c7",
+                     line_hex="CBD5E1", line_w=Pt(0.5))
+            add_text(sl,
+                     f"Peers with higher QO: {', '.join(higher_peers)} — "
+                     f"room to strengthen {target}'s narrative.",
+                     0.4, y_txt + 0.08, 12.5, 0.35, size=9, color="78350f")
+            y_txt += 0.58
+
+        if lower_peers:
+            add_rect(sl, 0.3, y_txt, 12.7, 0.5, "d1fae5",
+                     line_hex="CBD5E1", line_w=Pt(0.5))
+            add_text(sl,
+                     f"Peers with lower QO: {', '.join(lower_peers)} — "
+                     f"{target} has a comparative QO advantage over these peers.",
+                     0.4, y_txt + 0.08, 12.5, 0.35, size=9, color="065f46")
+            y_txt += 0.58
+
+        if not higher_peers and not lower_peers:
+            add_rect(sl, 0.3, y_txt, 12.7, 0.5, "EFF6FF",
+                     line_hex="CBD5E1", line_w=Pt(0.5))
+            add_text(sl,
+                     f"All selected peers have the same residual QO as {target}.",
+                     0.4, y_txt + 0.08, 12.5, 0.35, size=9, color="1E3A8A")
+
 
     # ── SLIDE: QO RANKED ARGUMENTS ────────────────────────────────────────────
     sl = blank_slide()
