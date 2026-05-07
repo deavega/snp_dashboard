@@ -342,7 +342,21 @@ def process_full_data(sp_xlsx):
         # Cari kolom secara dinamis
         country_col = [c for c in e.columns if 'Country Name' in c][0]
         rating_col = [c for c in e.columns if 'LT FC rating' in c][0]
-        f_c = lambda df, kw: [c for c in df.columns if kw in c and "2024" in c][0]
+
+        def f_c(df, kw):
+            # Try latest estimate year (e.g. 2025e) first, fall back to 2024
+            candidates = [c for c in df.columns if kw in c]
+            # Prefer estimate years (ending with 'e')
+            est_cols = [c for c in candidates if c.endswith('e')]
+            if est_cols:
+                # Sort and take the latest estimate year
+                return sorted(est_cols)[-1]
+            # Fall back to 2024 if no estimate year found
+            hist_cols = [c for c in candidates if "2024" in c]
+            if hist_cols:
+                return hist_cols[0]
+            # Last resort: take any matching column
+            return candidates[0] if candidates else None
 
         # 3. KONSOLIDASI DATA MASTER
         master = pd.DataFrame({
@@ -2624,6 +2638,10 @@ if f_macro:
         with tabs[4]: # METHODOLOGY SIMULATOR (GAUGE STYLE)
             st.subheader("Interactive Stress-Test Simulator")
             st.info("Gunakan input angka di bawah untuk mensimulasikan dampak perubahan indikator terhadap rating indikatif.")
+            st.caption(
+                "📅 Default values pre-filled from the latest available estimate year "
+                "(2025e if available, otherwise 2024). Adjust any input to simulate scenarios."
+            )
             
             sc1, sc2, sc3 = st.columns(3)
             
