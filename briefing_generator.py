@@ -6,7 +6,6 @@ Import this module and call generate_pdf() or generate_pptx().
 
 import io
 import textwrap
-from datetime import datetime
 
 import matplotlib
 matplotlib.use("Agg")
@@ -32,6 +31,12 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
+
+from datetime import datetime, timezone, timedelta
+
+# Jakarta timezone = UTC+7
+def now_jakarta():
+    return datetime.now(timezone.utc) + timedelta(hours=7)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COLOUR PALETTE
@@ -395,7 +400,7 @@ def generate_pdf(target, r, srm_rating, qo,
     story.append(Paragraph(f"Sovereign Credit Rating Briefing", st_h1))
     story.append(Paragraph(f"<b>{target}</b> | S&amp;P Methodology Analysis", st_h2))
     story.append(Paragraph(
-        f"Generated: {datetime.now().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
+        f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
         f"Based on S&amp;P Global Rating Criteria",
         st_small))
     story.append(hr())
@@ -955,7 +960,7 @@ def generate_pdf(target, r, srm_rating, qo,
     story.append(hr())
     story.append(Paragraph(
         f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
-        f"Generated {datetime.now().strftime('%d %B %Y')}</i>",
+        f"Generated {now_jakarta().strftime('%d %B %Y')}</i>",
         st_small))
 
     doc.build(story)

@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from briefing_generator import generate_pdf, generate_pptx
 import requests
 import io
+from datetime import datetime, timezone, timedelta
+
+def now_jakarta():
+    """Returns current time in Jakarta timezone (UTC+7)."""
+    return datetime.now(timezone.utc) + timedelta(hours=7)
 
 # ==========================================
 # 1. S&P INDICATIVE RATING MATRIX
@@ -2567,7 +2571,7 @@ if f_macro:
                             prof_ie=prof_ie, prof_fp=prof_fp,
                             comp_list=briefing_comp_list,
                             sel_nations=briefing_nations,
-                            trend_df=briefing_trend_df,
+                            trend_df= trend_df,
                             selected_metrics=briefing_metrics,
                             signals=signals,
                             qo_opportunities=qo_opportunities,
@@ -2581,7 +2585,7 @@ if f_macro:
                     st.download_button(
                         label="⬇️ Download PDF",
                         data=pdf_buf,
-                        file_name=f"Briefing_{target}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        file_name=f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                     )
@@ -2599,7 +2603,7 @@ if f_macro:
                             prof_ie=prof_ie, prof_fp=prof_fp,
                             comp_list=briefing_comp_list,
                             sel_nations=briefing_nations,
-                            trend_df=briefing_trend_df,
+                            trend_df= trend_df,
                             selected_metrics=briefing_metrics,
                             signals=signals,
                             qo_opportunities=qo_opportunities,
@@ -2612,7 +2616,7 @@ if f_macro:
                     st.download_button(
                         label="⬇️ Download PowerPoint",
                         data=pptx_buf,
-                        file_name=f"Briefing_{target}_{datetime.now().strftime('%Y%m%d')}.pptx",
+                        file_name=f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pptx",
                         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                         use_container_width=True,
                     )
