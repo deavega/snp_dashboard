@@ -787,7 +787,7 @@ if f_macro:
             """, unsafe_allow_html=True)
 
             # ── Methodology Plain Language Explainer ──────────────────────────
-            with st.expander("📖 How does S&P rate a sovereign? — Plain language guide", expanded=False):
+            with st.expander("📖 How does S&P rate a sovereign?", expanded=False):
                 st.markdown(f"""
                 #### How S&P Arrives at a Sovereign Rating
 
