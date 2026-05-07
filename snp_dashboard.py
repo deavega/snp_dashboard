@@ -2180,22 +2180,29 @@ if f_macro:
                     RED_P    = "background-color:#fee2e2;color:#991b1b;font-weight:600;"
                     NEUTRAL  = ""
 
+                    display_cols = ["Indicator", f"{target}", "BBB Peer Avg", "Difference", "vs Peers"]
+                    display_only = comp_df_display[display_cols].reset_index(drop=True)
+
                     def style_peer_table(df):
+                        # df only has display cols — look up _better/_worse from full df
                         styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                        for i, row in df.iterrows():
-                            if row["_better"]:
+                        for i in df.index:
+                            is_better = comp_df_display.loc[
+                                comp_df_display.index[i], "_better"]
+                            is_worse  = comp_df_display.loc[
+                                comp_df_display.index[i], "_worse"]
+                            if is_better:
                                 styles.loc[i, f"{target}"] = GREEN_P
                                 styles.loc[i, "Difference"] = GREEN_P
                                 styles.loc[i, "vs Peers"]   = GREEN_P
-                            elif row["_worse"]:
+                            elif is_worse:
                                 styles.loc[i, f"{target}"] = RED_P
                                 styles.loc[i, "Difference"] = RED_P
                                 styles.loc[i, "vs Peers"]   = RED_P
                         return styles
 
-                    display_cols = ["Indicator", f"{target}", "BBB Peer Avg", "Difference", "vs Peers"]
                     st.dataframe(
-                        comp_df_display[display_cols].style.apply(style_peer_table, axis=None),
+                        display_only.style.apply(style_peer_table, axis=None),
                         use_container_width=True,
                         hide_index=True,
                     )
