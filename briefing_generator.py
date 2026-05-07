@@ -199,29 +199,169 @@ def _metric_color(metric, val):
         return RL_RED, colors.HexColor(RED)
 
 
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF GENERATOR
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _compute_peer_qo_data(target, trend_df, df_master, RATING_TO_NUM):
+    """
+    Compute BBB-tier peer averages (latest estimate year) and target values
+    for QO narrative metrics. Returns (peer_avgs, target_vals, peer_countries, comp_rows).
+    """
+    if trend_df is None or trend_df.empty or df_master is None:
+        return {}, {}, [], []
+
+    PEER_METRICS = {
+        'Real GDP Growth (%)':     (True,  'Real GDP growth (%)'),
+        'Fiscal Balance (% GDP)':  (True,  'GG balance/GDP (%)'),
+        'Debt-to-GDP (%)':         (False, 'Net GG debt/GDP (%)'),
+        'Interest/Revenue (%)':    (False, 'GG interest expenditure/revenues (%)'),
+        'GEFN (% CAR)':            (False, 'Gross ext. fin. needs/(CAR + use. res.) (%)'),
+        'Reserves (months)':       (True,  'Usable reserves/CAPs (months)'),
+        'CPI Inflation (%)':       (False, 'CPI growth (%)'),
+        'Financial Depth (% GDP)': (True,  "Banks' claims on resident non-gov't sector/GDP"),
+    }
+
+    QO_FACTOR_MAP = {
+        'Real GDP Growth (%)':     'Fiscal Flexibility & Economic Resilience',
+        'Fiscal Balance (% GDP)':  'Fiscal Flexibility',
+        'Debt-to-GDP (%)':         'Fiscal Flexibility',
+        'Interest/Revenue (%)':    'Fiscal Flexibility',
+        'GEFN (% CAR)':            'External Liquidity & IIP',
+        'Reserves (months)':       'External Liquidity & IIP',
+        'CPI Inflation (%)':       'Monetary Flexibility',
+        'Financial Depth (% GDP)': 'Monetary Flexibility',
+    }
+
+    QO_TEMPLATES = {
+        'Real GDP Growth (%)': (
+            "Growth of {t:.1f}% vs BBB peer average {p:.1f}% ({d:+.1f}pp). "
+            "S&P para.15 recognises sustained outperformance vs similarly rated peers "
+            "as a basis for positive residual adjustment. Highlight multi-year trend growth."
+        ),
+        'Fiscal Balance (% GDP)': (
+            "Fiscal balance {t:.1f}% vs peer avg {p:.1f}% ({d:+.1f}pp advantage). "
+            "Tighter deficit than the BBB cohort demonstrates superior fiscal discipline — "
+            "a strong Fiscal Flexibility QO argument."
+        ),
+        'Debt-to-GDP (%)': (
+            "Net debt {t:.1f}% of GDP vs peer avg {p:.1f}% ({d:+.1f}pp lower). "
+            "Below-peer debt burden provides greater shock absorption, supporting "
+            "Fiscal Flexibility argument. Emphasise declining debt trajectory."
+        ),
+        'Interest/Revenue (%)': (
+            "Interest/revenue {t:.1f}% vs peer avg {p:.1f}% ({d:+.1f}pp advantage). "
+            "Lower debt servicing cost signals stronger fiscal headroom — "
+            "compelling Fiscal Flexibility argument in QO dialogue."
+        ),
+        'GEFN (% CAR)': (
+            "GEFN {t:.1f}% vs peer avg {p:.1f}% ({d:+.1f}pp lower rollover need). "
+            "Superior external liquidity management vs BBB cohort — "
+            "use as External Liquidity & IIP positive argument."
+        ),
+        'Reserves (months)': (
+            "Reserves {t:.1f} months vs peer avg {p:.1f} months. "
+            "Above-peer buffer reduces sudden stop vulnerability — "
+            "supports External Liquidity & IIP QO factor."
+        ),
+        'CPI Inflation (%)': (
+            "Inflation {t:.1f}% vs peer avg {p:.1f}% ({d:+.1f}pp lower). "
+            "Closer price stability supports monetary credibility — "
+            "Monetary Flexibility QO factor. Emphasise central bank independence."
+        ),
+        'Financial Depth (% GDP)': (
+            "Financial depth {t:.1f}% vs peer avg {p:.1f}% ({d:+.1f}pp advantage). "
+            "Deeper financial system enhances monetary transmission — "
+            "supports Monetary Flexibility QO argument."
+        ),
+    }
+
+    # BBB tier peer countries
+    peer_rating_nums = [
+        RATING_TO_NUM.get('BBB-', 7),
+        RATING_TO_NUM.get('BBB',  8),
+        RATING_TO_NUM.get('BBB+', 9),
+    ]
+    rating_lookup = {
+        str(row['Country']).strip(): str(row['Actual_Rating']).replace('*','').strip()
+        for _, row in df_master.iterrows()
+        if pd.notna(row['Country']) and str(row['Country']).strip() not in ('nan','None','')
+    }
+    peer_countries = [
+        c for c in rating_lookup
+        if RATING_TO_NUM.get(rating_lookup.get(c,''), -1) in peer_rating_nums
+        and c != target
+    ]
+
+    def get_latest_est(country, raw_metric):
+        try:
+            sub = trend_df[
+                (trend_df['Country'] == country) &
+                (trend_df['Metric'] == raw_metric)
+            ].copy()
+            if sub.empty: return np.nan
+            sub['_s'] = sub['Year'].apply(
+                lambda y: float(str(y).replace('e','').replace('f',''))
+                if not str(y).strip().endswith('f') else -1
+            )
+            sub = sub[sub['_s'] > 0]
+            if sub.empty: return np.nan
+            return float(sub.sort_values('_s').iloc[-1]['Value'])
+        except:
+            return np.nan
+
+    peer_avgs   = {}
+    target_vals = {}
+    comp_rows   = []
+
+    for label, (higher_better, raw_metric) in PEER_METRICS.items():
+        peer_vals = [get_latest_est(pc, raw_metric) for pc in peer_countries]
+        peer_vals = [v for v in peer_vals if not np.isnan(v)]
+        p_avg = np.nanmean(peer_vals) if peer_vals else np.nan
+        t_val = get_latest_est(target, raw_metric)
+
+        peer_avgs[label]   = p_avg
+        target_vals[label] = t_val
+
+        if np.isnan(t_val) or np.isnan(p_avg): continue
+        diff      = t_val - p_avg
+        is_better = (diff > 0) if higher_better else (diff < 0)
+        is_worse  = (diff < 0) if higher_better else (diff > 0)
+        pct_diff  = abs(diff) / abs(p_avg) * 100 if p_avg != 0 else 0
+        template  = QO_TEMPLATES.get(label, '')
+        argument  = template.format(t=t_val, p=p_avg, d=diff) if template else ''
+        factor    = QO_FACTOR_MAP.get(label, 'General Assessment')
+
+        comp_rows.append({
+            'label':        label,
+            't_val':        t_val,
+            'p_avg':        p_avg,
+            'diff':         diff,
+            'is_better':    is_better,
+            'is_worse':     is_worse,
+            'pct_diff':     pct_diff,
+            'factor':       factor,
+            'argument':     argument,
+            'higher_better':higher_better,
+        })
+
+    return peer_avgs, target_vals, peer_countries, comp_rows
 
 def generate_pdf(target, r, srm_rating, qo,
                  s_inst, s_eco, s_fis, s_ext, s_mon,
                  prof_ie, prof_fp,
                  comp_list, sel_nations, trend_df, selected_metrics,
                  signals, qo_opportunities,
-                 # ── ADD THESE ──
-                 supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None):
-    supp_factors    = supp_factors or []
+                 supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None,
+                 df_master=None):    
+    supp_factors     = supp_factors or []
     final_indicative = final_indicative or srm_rating
-    supp_adj_sign   = f"{int(supp_adj):+}" if supp_adj != 0 else "None"
-
-    srm_to_final_diff  = RATING_TO_NUM.get(final_indicative, 8) - RATING_TO_NUM.get(srm_rating, 8)
-    final_to_actual_diff = RATING_TO_NUM.get(str(r['Actual_Rating']).replace('*','').strip(), 8) - RATING_TO_NUM.get(final_indicative, 8)
-
     """
     Returns a bytes buffer containing the PDF briefing note.
     """
+    supp_factors     = supp_factors or []
+    final_indicative = final_indicative or srm_rating
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -275,12 +415,11 @@ def generate_pdf(target, r, srm_rating, qo,
                 Paragraph(note, st_caption)]
 
     # Summary KPI table
-    qo_sign       = f"{int(qo):+}"
-    supp_adj_sign = f"{int(supp_adj):+}" if supp_adj != 0 else "None"
+    qo_sign = f"{int(qo):+}"
     kpi_data = [
-        ["Actual Rating", "SRM Matrix", "After Supplemental", "Residual ±1", "IE / FP Profile"],
-        [str(r['Actual_Rating']), srm_rating, final_indicative,
-         qo_sign, f"{prof_ie:.2f} / {prof_fp:.2f}"],
+        ["S&P Actual Rating", "SRM Model Output", "Qualitative Overlay", "IE Profile", "FP Profile"],
+        [str(r['Actual_Rating']), srm_rating, qo_sign,
+         f"{prof_ie:.2f}", f"{prof_fp:.2f}"],
     ]
     kpi_style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), RL_NAVY),
@@ -337,40 +476,16 @@ def generate_pdf(target, r, srm_rating, qo,
 
     # QO interpretation
     qo_label = "Upgrade" if qo > 0 else ("Penalty" if qo < 0 else "Neutral")
-    # Supplemental factors narrative
-    if supp_factors:
-        story.append(Paragraph("<b>⚡ Supplemental Adjustment Factors (para. 125–128):</b>", st_h3))
-        for f in supp_factors:
-            prefix = "▼" if f["type"] == "negative" else "▲"
-            story.append(Paragraph(
-                f"{prefix} <b>{f['factor']}</b> [{f['impact']}]: {f['detail']}",
-                st_body))
-    if cap_note:
-        story.append(Paragraph(
-            f"🚧 <b>Hard Cap Applied:</b> {cap_note}", st_body))
-    if not supp_factors and not cap_note:
-        story.append(Paragraph(
-            "No supplemental adjustment factors triggered. "
-            "SRM matrix output equals post-supplemental indicative rating.",
-            st_body))
-
-    story.append(vsp(4))
-
-    # Residual ±1 notch
-    qo_label = "Upgrade" if qo > 0 else ("Penalty" if qo < 0 else "Neutral")
     qo_text  = (
-        "Positive residual: S&P views transitional factors, ESG considerations, or "
-        "over-performance vs peers as supporting a higher rating than the model implies."
+        "Positive QO: S&P views qualitative factors as stronger than the SRM model implies — "
+        "strong institutions, lower contingent liability risks, or superior fiscal flexibility."
         if qo > 0 else
-        "Negative residual: S&P identified factors not fully captured by the model — "
-        "transitional risks, underperformance vs peers, or governance concerns."
+        "Negative QO: S&P identified hidden risks not fully captured by the quantitative model — "
+        "SOE/GRE liabilities, narrow fiscal space, external vulnerability, or governance concerns."
         if qo < 0 else
-        "No residual adjustment — the post-supplemental indicative rating aligns with "
-        "the official rating."
+        "Neutral QO: The SRM model output aligns with S&P's full qualitative assessment."
     )
-    story.append(Paragraph(
-        f"<b>Residual ±1 Notch Adjustment ({qo_sign} — {qo_label}):</b> {qo_text}",
-        st_body))
+    story.append(Paragraph(f"<b>Qualitative Overlay ({qo_sign} notch — {qo_label}):</b> {qo_text}", st_body))
     story.append(hr())
 
     # ── SECTION 2 — PEER COMPARISON ───────────────────────────────────────────
@@ -510,103 +625,6 @@ def generate_pdf(target, r, srm_rating, qo,
     # ── SECTION 3 — RECOMMENDATION ────────────────────────────────────────────
     story.append(Paragraph("3. Recommendation", st_h2))
 
-    # ── Executive Summary ─────────────────────────────────────────────────────
-    strength_sigs  = [s for s in signals if s["type"] == "strength"]
-    moderate_sigs  = [s for s in signals if s["type"] == "moderate"]
-    weakness_sigs  = [s for s in signals if s["type"] == "weakness"]
-
-    upgrade_count  = len(strength_sigs)
-    moderate_count = len(moderate_sigs)
-    weakness_count = len(weakness_sigs)
-
-    top_strengths  = [s['metric'] for s in strength_sigs][:3]
-    top_weaknesses = [s['metric'] for s in weakness_sigs][:3]
-
-    strength_text  = (f"Key strengths include {', '.join(top_strengths)}."
-                      if top_strengths else "No material strengths identified.")
-    weakness_text  = (f"Key areas of concern are {', '.join(top_weaknesses)}."
-                      if top_weaknesses else "No material weaknesses identified.")
-
-    if weakness_count == 0 and upgrade_count >= 3:
-        trajectory     = "Upgrade Candidate"
-        traj_bg        = RL_GREEN
-    elif weakness_count >= 3:
-        trajectory     = "Downgrade Risk"
-        traj_bg        = RL_RED
-    elif weakness_count >= 1 and moderate_count >= 2:
-        trajectory     = "Stable with Caution"
-        traj_bg        = RL_YELLOW
-    else:
-        trajectory     = "Broadly Stable"
-        traj_bg        = colors.HexColor("#EFF6FF")
-
-    if qo > 0:
-        qo_exec = (f"S&P's committee applied a +{int(qo)}-notch residual adjustment above "
-                   f"the post-supplemental indicative rating of {final_indicative}, "
-                   f"recognising positive factors beyond the quantitative model.")
-    elif qo < 0:
-        qo_exec = (f"S&P's committee applied a {int(qo)}-notch residual adjustment below "
-                   f"the post-supplemental indicative of {final_indicative}, "
-                   f"reflecting hidden risks not captured by the model.")
-    else:
-        qo_exec = (f"The official rating {r['Actual_Rating']} aligns with the "
-                   f"post-supplemental indicative {final_indicative} — no residual adjustment applied.")
-
-    if supp_factors:
-        supp_exec = (f"Supplemental factors triggered: "
-                     f"{', '.join([f['factor'] for f in supp_factors])} "
-                     f"({int(supp_adj):+} notch from SRM output of {srm_rating}).")
-    elif cap_note:
-        supp_exec = f"Hard cap applied: {cap_note}."
-    else:
-        supp_exec = (f"No supplemental factors triggered — SRM output {srm_rating} "
-                     f"carried through unchanged.")
-
-    if trajectory == "Broadly Stable":
-        closing = ("The overall profile supports the current rating with potential "
-                   "for upgrade if key weaknesses are addressed.")
-    elif trajectory == "Stable with Caution":
-        closing = ("The profile warrants close monitoring — deterioration in watch "
-                   "areas could trigger a negative outlook.")
-    elif trajectory == "Upgrade Candidate":
-        closing = ("The strong fundamental profile positions this sovereign for a "
-                   "potential upgrade in the near to medium term.")
-    else:
-        closing = ("Sustained weakness across multiple pillars creates meaningful "
-                   "downgrade risk if policy correction is not forthcoming.")
-
-    summary_text = (
-        f"{target} holds an official S&P rating of {r['Actual_Rating']}, derived from "
-        f"an SRM matrix output of {srm_rating} (IE: {prof_ie:.2f}, FP: {prof_fp:.2f}). "
-        f"{supp_exec} {qo_exec} "
-        f"Across {len(signals)} indicator signals: {upgrade_count} strong, "
-        f"{moderate_count} moderate, {weakness_count} requiring attention. "
-        f"{strength_text} {weakness_text} {closing}"
-    )
-
-    # Trajectory label box
-    traj_table = Table(
-        [[Paragraph(f"Rating Trajectory: {trajectory}", ParagraphStyle(
-            "traj", fontSize=10, fontName="Helvetica-Bold",
-            textColor=colors.HexColor("#065f46" if trajectory=="Upgrade Candidate"
-                       else ("#991b1b" if trajectory=="Downgrade Risk"
-                       else ("#78350f" if trajectory=="Stable with Caution"
-                       else "#1e3a8a")))))]],
-        colWidths=[17.4*cm]
-    )
-    traj_table.setStyle(TableStyle([
-        ('BACKGROUND',    (0,0), (-1,-1), traj_bg),
-        ('TOPPADDING',    (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING',   (0,0), (-1,-1), 10),
-        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-    ]))
-    story.append(traj_table)
-    story.append(vsp(4))
-    story.append(Paragraph(summary_text, st_body))
-    story.append(vsp(8))
-
-
     strength_sigs  = [s for s in signals if s["type"] == "strength"]
     moderate_sigs  = [s for s in signals if s["type"] == "moderate"]
     weakness_sigs  = [s for s in signals if s["type"] == "weakness"]
@@ -655,190 +673,198 @@ def generate_pdf(target, r, srm_rating, qo,
         st_body))
     story.append(vsp(6))
 
-    # QO opportunity table
-    if qo_opportunities:
-        story.append(Paragraph("QO Narrative Opportunities", st_h3))
-        opp_rows = [["Factor", "Argument", "Potential Impact"]]
-        for opp in qo_opportunities:
-            opp_rows.append([
-                Paragraph(f"<b>{opp['factor']}</b>", st_small),
-                Paragraph(opp['argument'], st_small),
-                Paragraph(f"<b>{opp['impact']}</b>", st_small),
-            ])
-        opp_style = TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), RL_TEAL),
-            ('TEXTCOLOR',  (0,0), (-1,0), RL_WHITE),
-            ('FONTNAME',   (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE',   (0,0), (-1,-1), 8),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.HexColor("#EFF6FF"), RL_WHITE]),
-            ('BOX',        (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-            ('INNERGRID',  (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
-            ('VALIGN',     (0,0), (-1,-1), 'TOP'),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ])
-        story.append(Table(opp_rows,
-            colWidths=[3.5*cm, 11*cm, 3*cm],
-            style=opp_style, repeatRows=1))
-        story.append(vsp(8))
-    else:
+    # ── Peer-enhanced QO narrative ───────────────────────────────────────────
+    # Use full df_master for BBB peer group — falls back to comp_list if not provided
+    _peer_df = df_master if df_master is not None and not df_master.empty else \
+               pd.DataFrame([{
+                   "Country": c["Country"],
+                   "Actual_Rating": c["_nr"]["Actual_Rating"]
+               } for c in comp_list]) if comp_list else pd.DataFrame()
+
+    _, _, peer_countries_qo, comp_rows_qo = _compute_peer_qo_data(
+        target, trend_df, _peer_df, RATING_TO_NUM
+    )
+
+    strengths_qo  = [r2 for r2 in comp_rows_qo if r2["is_better"]]
+    weaknesses_qo = [r2 for r2 in comp_rows_qo if r2["is_worse"]]
+    strengths_qo  = sorted(strengths_qo, key=lambda x: x["pct_diff"], reverse=True)
+
+    st_cell9 = ParagraphStyle("c9", fontSize=9, leading=12)
+
+    if comp_rows_qo:
+        # ── Peer comparison table ─────────────────────────────────────────────
         story.append(Paragraph(
-            "No strong QO narrative opportunities identified based on current data. "
-            "Focus on addressing weaknesses first to unlock positive QO arguments.",
-            st_body))
-        story.append(vsp(6))
+            f"Performance vs BBB Peer Average ({len(peer_countries_qo)} peers, latest estimate)",
+            st_h3))
 
-    # Peer comparison for QO
-    if len(comp_list) > 1:
-        story.append(Paragraph("QO Peer Context", st_h3))
-        peer_rows = [["Country", "Actual", "SRM", "QO", "IE Prof.", "FP Prof."]]
-        for c in comp_list:
-            peer_rows.append([
-                c["Country"], c["_nr"]['Actual_Rating'], c["_srm"],
-                f"{int(c['_qo']):+}",
-                f"{c['_ie']:.2f}", f"{c['_fp']:.2f}",
+        tbl_hdr = ["Indicator", target, "BBB Peer Avg", "Difference", "Signal"]
+        tbl_rows = [tbl_hdr]
+        row_colors = []
+        for r2 in comp_rows_qo:
+            sig = "Above peers" if r2["is_better"] else ("Below peers" if r2["is_worse"] else "In line")
+            tbl_rows.append([
+                Paragraph(r2["label"], st_cell9),
+                Paragraph(f"{r2['t_val']:.1f}", st_cell9),
+                Paragraph(f"{r2['p_avg']:.1f}", st_cell9),
+                Paragraph(f"{r2['diff']:+.1f}", st_cell9),
+                Paragraph(sig, st_cell9),
             ])
-        peer_style = TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), RL_NAVY),
-            ('TEXTCOLOR',  (0,0), (-1,0), RL_WHITE),
-            ('FONTNAME',   (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE',   (0,0), (-1,-1), 9),
-            ('ALIGN',      (1,0), (-1,-1), 'CENTER'),
-            ('BOX',        (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-            ('INNERGRID',  (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [RL_LGREY, RL_WHITE]),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            row_colors.append(r2["is_better"])
+
+        peer_tbl_style = TableStyle([
+            ("BACKGROUND",    (0,0), (-1,0), RL_NAVY),
+            ("TEXTCOLOR",     (0,0), (-1,0), RL_WHITE),
+            ("FONTNAME",      (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0), (-1,-1), 9),
+            ("ALIGN",         (1,0), (-1,-1), "CENTER"),
+            ("BOX",           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+            ("INNERGRID",     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("TOPPADDING",    (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
         ])
-        for ri, c in enumerate(comp_list, 1):
-            qo_val = int(c['_qo'])
-            bg = RL_GREEN if qo_val > 0 else (RL_RED if qo_val < 0 else RL_WHITE)
-            peer_style.add('BACKGROUND', (3, ri), (3, ri), bg)
-            for ci_idx, col_label in [(1,'Actual'),(2,'SRM')]:
-                rating_val = c["_nr"]['Actual_Rating'] if ci_idx == 1 else c["_srm"]
-                rbg, _ = _rating_color(rating_val)
-                peer_style.add('BACKGROUND', (ci_idx, ri), (ci_idx, ri), rbg)
+        for ri, r2 in enumerate(comp_rows_qo, 1):
+            if r2["is_better"]:
+                peer_tbl_style.add("BACKGROUND", (1,ri), (1,ri), RL_GREEN)
+                peer_tbl_style.add("BACKGROUND", (3,ri), (3,ri), RL_GREEN)
+                peer_tbl_style.add("BACKGROUND", (4,ri), (4,ri), RL_GREEN)
+            elif r2["is_worse"]:
+                peer_tbl_style.add("BACKGROUND", (1,ri), (1,ri), RL_RED)
+                peer_tbl_style.add("BACKGROUND", (3,ri), (3,ri), RL_RED)
+                peer_tbl_style.add("BACKGROUND", (4,ri), (4,ri), RL_RED)
 
-        story.append(Table(peer_rows,
-            colWidths=[4.5*cm, 2.2*cm, 2.2*cm, 1.8*cm, 2.3*cm, 2.3*cm],
-            style=peer_style))
-        story.append(vsp(6))
+        story.append(Table(tbl_rows,
+            colWidths=[5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 5*cm],
+            style=peer_tbl_style, repeatRows=1))
+        story.append(vsp(8))
 
-        # QO delta narrative
-        target_qo = int(comp_list[0]["_qo"]) if comp_list else 0
-        peer_qos = [(c["Country"], int(c["_qo"])) for c in comp_list[1:]]
-        higher_peers = [f"{n} ({q:+})" for n, q in peer_qos if q > target_qo]
-        lower_peers  = [f"{n} ({q:+})" for n, q in peer_qos if q < target_qo]
+        # ── Ranked QO arguments ───────────────────────────────────────────────
+        if strengths_qo:
+            story.append(Paragraph("Ranked QO Arguments (Strongest First)", st_h3))
+            for i, r2 in enumerate(strengths_qo[:5], 1):
+                pct = r2["pct_diff"]
+                if pct >= 30:   strength_label = "Very Strong"; bg_col = colors.HexColor("#d1fae5")
+                elif pct >= 15: strength_label = "Strong";      bg_col = colors.HexColor("#dbeafe")
+                else:           strength_label = "Supporting";  bg_col = colors.HexColor("#ede9fe")
 
-        if higher_peers:
+                arg_block = [
+                    [Paragraph(
+                        f"<b>#{i} {r2['factor']}</b> | {r2['label']} | "
+                        f"{target}: {r2['t_val']:.1f} vs BBB avg: {r2['p_avg']:.1f} "
+                        f"({r2['diff']:+.1f}, {pct:.0f}% outperformance) | {strength_label}",
+                        ParagraphStyle("arg_h", fontSize=9, fontName="Helvetica-Bold",
+                                       textColor=colors.HexColor("#1e3a8a")))],
+                    [Paragraph(r2["argument"],
+                        ParagraphStyle("arg_b", fontSize=9, leading=13,
+                                       textColor=colors.HexColor("#1e293b")))],
+                ]
+                arg_tbl = Table(arg_block, colWidths=[17.4*cm])
+                arg_tbl.setStyle(TableStyle([
+                    ("BACKGROUND",    (0,0), (-1,0), bg_col),
+                    ("BACKGROUND",    (0,1), (-1,1), colors.HexColor("#f8fafc")),
+                    ("BOX",           (0,0), (-1,-1), 0.8, colors.HexColor("#1e3a8a")),
+                    ("INNERGRID",     (0,0), (-1,-1), 0.3, colors.HexColor("#e2e8f0")),
+                    ("TOPPADDING",    (0,0), (-1,-1), 5),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+                    ("LEFTPADDING",   (0,0), (-1,-1), 6),
+                    ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+                ]))
+                story.append(arg_tbl)
+                story.append(vsp(4))
+
+            # Overall QO strategy box
+            top_factors = list(dict.fromkeys([r2["factor"] for r2 in strengths_qo[:3]]))
+            strategy = (
+                f"Lead with {strengths_qo[0]['label']} advantage "
+                f"({strengths_qo[0]['t_val']:.1f} vs peer avg {strengths_qo[0]['p_avg']:.1f}, "
+                f"{strengths_qo[0]['pct_diff']:.0f}% outperformance). "
+                f"Key QO factors to target: {', '.join(top_factors)}. "
+                + ("Address underperforming metrics to protect QO position." if weaknesses_qo
+                   else "No material peer underperformance — strong overall QO case.")
+            )
+            strat_tbl = Table(
+                [[Paragraph(f"<b>🎯 Overall QO Strategy:</b> {strategy}",
+                    ParagraphStyle("strat", fontSize=9, leading=13,
+                                   textColor=colors.white))]],
+                colWidths=[17.4*cm])
+            strat_tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,-1), RL_NAVY),
+                ("TOPPADDING",    (0,0), (-1,-1), 8),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+                ("LEFTPADDING",   (0,0), (-1,-1), 10),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 10),
+                ("BOX",           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+            ]))
+            story.append(strat_tbl)
+            story.append(vsp(8))
+
+        # ── Underperforming metrics ───────────────────────────────────────────
+        if weaknesses_qo:
             story.append(Paragraph(
-                f"<b>Peers with higher QO:</b> {', '.join(higher_peers)}. "
-                "These peers receive more favourable qualitative adjustments, suggesting "
-                f"{target} has room to strengthen its narrative on institutional quality, "
-                "contingent liability management, or fiscal flexibility.",
-                st_body))
-        if lower_peers:
+                f"Areas Where {target} Underperforms BBB Peers (Address to Protect QO)",
+                st_h3))
+            wk_rows = [["Indicator", target, "BBB Avg", "Gap", "Risk"]]
+            for r2 in weaknesses_qo:
+                wk_rows.append([
+                    Paragraph(r2["label"], st_cell9),
+                    Paragraph(f"{r2['t_val']:.1f}", st_cell9),
+                    Paragraph(f"{r2['p_avg']:.1f}", st_cell9),
+                    Paragraph(f"{r2['diff']:+.1f}", st_cell9),
+                    Paragraph("Negative residual risk", st_cell9),
+                ])
+            wk_style = TableStyle([
+                ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#991b1b")),
+                ("TEXTCOLOR",     (0,0), (-1,0), RL_WHITE),
+                ("FONTNAME",      (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",      (0,0), (-1,-1), 9),
+                ("ROWBACKGROUNDS",(0,1), (-1,-1), [RL_RED, RL_WHITE]),
+                ("BOX",           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+                ("INNERGRID",     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+                ("TOPPADDING",    (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ])
+            story.append(Table(wk_rows,
+                colWidths=[5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 5*cm],
+                style=wk_style, repeatRows=1))
+            story.append(vsp(6))
+
+    else:
+        # Fallback to static opportunities if no trend data
+        if qo_opportunities:
+            story.append(Paragraph("QO Narrative Opportunities", st_h3))
+            opp_rows = [["Factor", "Argument", "Potential Impact"]]
+            for opp in qo_opportunities:
+                opp_rows.append([
+                    Paragraph(f"<b>{opp['factor']}</b>", st_small),
+                    Paragraph(opp['argument'], st_small),
+                    Paragraph(f"<b>{opp['impact']}</b>", st_small),
+                ])
+            opp_style = TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), RL_TEAL),
+                ("TEXTCOLOR",  (0,0), (-1,0), RL_WHITE),
+                ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",   (0,0), (-1,-1), 8),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#EFF6FF"), RL_WHITE]),
+                ("BOX",        (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+                ("INNERGRID",  (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+                ("VALIGN",     (0,0), (-1,-1), "TOP"),
+                ("TOPPADDING", (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ])
+            story.append(Table(opp_rows,
+                colWidths=[3.5*cm, 11*cm, 3*cm],
+                style=opp_style, repeatRows=1))
+            story.append(vsp(8))
+        else:
             story.append(Paragraph(
-                f"<b>Peers with lower QO:</b> {', '.join(lower_peers)}. "
-                f"{target}'s relative QO position is stronger, which should be highlighted "
-                "in rating dialogue as a comparative advantage.",
+                "No QO narrative opportunities identified. "
+                "Visit the Peer Comparison tab to load peer data for enhanced analysis.",
                 st_body))
+            story.append(vsp(6))
 
     # Footer
     story.append(vsp(16))
     story.append(hr())
-    # Rating derivation flow summary box
-    story.append(vsp(8))
-    story.append(Paragraph("<b>Rating Derivation — Three Layer Flow</b>", st_h3))
-
-    # Wrap long text in Paragraph so ReportLab word-wraps within column
-    st_cell = ParagraphStyle("cell", fontSize=8, leading=11, wordWrap='CJK')
-    st_head = ParagraphStyle("head", fontSize=8, leading=11,
-                             fontName="Helvetica-Bold", textColor=colors.white)
-
-    def cell(text):
-        return Paragraph(str(text), st_cell)
-
-    def head(text):
-        return Paragraph(str(text), st_head)
-
-    # Build basis text for step 2
-    if cap_note:
-        basis_2 = cap_note
-    elif supp_factors:
-        basis_2 = "; ".join([f['factor'] for f in supp_factors])
-    else:
-        basis_2 = "Para. 125-128 conditions not met — no extreme external, fiscal, or institutional triggers."
-
-    # Build basis text for step 3
-    if qo != 0:
-        basis_3 = ("Para. 15: positive transitional dynamics, ESG factors, or sustained "
-                   "outperformance vs peers." if qo > 0 else
-                   "Para. 15: negative transitional dynamics, ESG concerns, or sustained "
-                   "underperformance vs peers.")
-    else:
-        basis_3 = "Post-supplemental indicative rating equals official rating — no committee adjustment."
-
-    flow_rows = [
-        [head("Step"), head("Description"), head("Output"), head("Basis")],
-        [cell("1"),
-         cell("Five-pillar SRM matrix lookup"),
-         cell(srm_rating),
-         cell(f"IE Profile = {prof_ie:.2f}, FP Profile = {prof_fp:.2f}. "
-              f"Matrix intersection determines indicative rating.")],
-        [cell("2"),
-         cell(f"Supplemental adjustment: {int(supp_adj):+} notch" if supp_adj != 0
-              else ("Hard cap applied" if cap_note
-                    else "No supplemental factors triggered")),
-         cell(final_indicative),
-         cell(basis_2)],
-        [cell("3"),
-         cell(f"Residual ±1 notch adjustment: {int(qo):+}" if qo != 0
-              else "No residual adjustment"),
-         cell(str(r['Actual_Rating'])),
-         cell(basis_3)],
-    ]
-
-    flow_style = TableStyle([
-        ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
-        ('ALIGN',         (2,0), (2,-1), 'CENTER'),
-        ('VALIGN',        (0,0), (-1,-1), 'TOP'),
-        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-        ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
-        ('ROWBACKGROUNDS',(0,1), (-1,-1), [RL_WHITE, RL_LGREY, RL_WHITE]),
-        ('BACKGROUND',    (2,1), (2,1), _rating_color(srm_rating)[0]),
-        ('BACKGROUND',    (2,2), (2,2), _rating_color(final_indicative)[0]),
-        ('BACKGROUND',    (2,3), (2,3), _rating_color(r['Actual_Rating'])[0]),
-        ('TOPPADDING',    (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('LEFTPADDING',   (0,0), (-1,-1), 4),
-        ('RIGHTPADDING',  (0,0), (-1,-1), 4),
-    ])
-
-    story.append(Table(flow_rows,
-        colWidths=[1*cm, 5.5*cm, 2*cm, 9*cm],   # wider Basis column
-        style=flow_style,
-        repeatRows=1))
-
-    story.append(vsp(4))
-    story.append(Paragraph(
-        (f"<i>Note: A residual adjustment of {int(qo):+} notch means S&P's rating committee "
-         f"applied a para. 15 adjustment {'above' if qo>0 else 'below'} the post-supplemental "
-         f"indicative rating of <b>{final_indicative}</b> to arrive at the official "
-         f"<b>{r['Actual_Rating']}</b>. This is NOT a supplemental adjustment — it reflects "
-         f"{'positive transitional dynamics, favorable ESG factors, or sustained outperformance vs peers.' if qo>0 else 'negative transitional dynamics, ESG concerns, or sustained underperformance vs peers.'}</i>")
-        if qo != 0 else
-        (f"<i>The official rating <b>{r['Actual_Rating']}</b> equals the post-supplemental "
-         f"indicative rating — no residual adjustment was applied by S&P's rating committee.</i>"),
-        st_small))
-    
-    story.append(Paragraph(
-        f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
-        f"Generated {datetime.now().strftime('%d %B %Y')} | "
-        f"Methodology: S&P Global Ratings Sovereign Rating Criteria (Dec 2017, updated Oct 2024) — "
-        f"spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157</i>",
-        st_small))
-
     story.append(Paragraph(
         f"<i>Confidential — Sovereign Rating Monitoring Dashboard | "
         f"Generated {datetime.now().strftime('%d %B %Y')}</i>",
@@ -858,9 +884,9 @@ def generate_pptx(target, r, srm_rating, qo,
                   prof_ie, prof_fp,
                   comp_list, sel_nations, trend_df, selected_metrics,
                   signals, qo_opportunities,
-                  # ── ADD THESE ──
-                  supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None):
-    supp_factors    = supp_factors or []
+                  supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None,
+                  df_master=None):
+    supp_factors     = supp_factors or []
     final_indicative = final_indicative or srm_rating
     """Returns a bytes buffer containing the PPTX briefing."""
 
@@ -936,8 +962,7 @@ def generate_pptx(target, r, srm_rating, qo,
     add_text(sl, "S&P Rating", 10, 1.9, 2.6, 0.35, size=9, color="64748B", align=PP_ALIGN.CENTER)
     add_text(sl, str(r['Actual_Rating']), 10, 2.2, 2.6, 0.9,
              size=40, bold=True, color="1E3A8A", align=PP_ALIGN.CENTER)
-    add_text(sl,
-             f"SRM: {srm_rating}  →  {final_indicative}  |  Residual: {qo_sign}",
+    add_text(sl, f"SRM: {srm_rating}  |  QO: {qo_sign}",
              10, 3.1, 2.6, 0.4, size=10, color="475569", align=PP_ALIGN.CENTER)
 
     # ── SLIDE 2: NATIONAL PORTFOLIO ───────────────────────────────────────────
@@ -950,12 +975,11 @@ def generate_pptx(target, r, srm_rating, qo,
 
     # KPI cards row
     kpis = [
-        ("Actual Rating",     str(r['Actual_Rating']), rating_fill(r['Actual_Rating'])),
-        ("SRM Matrix",        srm_rating,               rating_fill(srm_rating)),
-        ("Post-Supplemental", final_indicative,         rating_fill(final_indicative)),
-        ("Residual ±1 Notch", qo_sign,
-         "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9")),
-        ("IE / FP",           f"{prof_ie:.2f} / {prof_fp:.2f}", "EFF6FF"),
+        ("Actual Rating", str(r['Actual_Rating']), rating_fill(r['Actual_Rating'])),
+        ("SRM Output",    srm_rating,               rating_fill(srm_rating)),
+        ("QO Notch",      qo_sign,                  "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9")),
+        ("IE Profile",    f"{prof_ie:.2f}",          "EFF6FF"),
+        ("FP Profile",    f"{prof_fp:.2f}",          "EFF6FF"),
     ]
     for i, (label, val, bg) in enumerate(kpis):
         x = 0.3 + i * 2.55
@@ -982,31 +1006,16 @@ def generate_pptx(target, r, srm_rating, qo,
                  color=col, align=PP_ALIGN.CENTER)
 
     # QO note
-    # Supplemental + residual combined note
-    if supp_factors:
-        supp_text = f"⚡ Supplemental: {'; '.join([f['factor']+' ('+f['impact']+')' for f in supp_factors])}"
-    elif cap_note:
-        supp_text = f"🚧 Cap: {cap_note}"
-    else:
-        supp_text = "✅ No supplemental adjustments triggered"
-
-    residual_text = (
-        f"Residual {qo_sign} notch ({qo_label}): " + (
-        "Positive factors beyond model." if qo > 0 else
-        "Hidden risks beyond model." if qo < 0 else
-        "Model aligned with official rating.")
-    )
-
-    add_rect(sl, 0.3, 3.55, 12.7, 0.35,
-             "d1fae5" if not supp_factors and not cap_note else "fef3c7",
-             line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, supp_text, 0.4, 3.58, 12.5, 0.28, size=8,
-             color="065f46" if not supp_factors else "78350f")
-
-    add_rect(sl, 0.3, 3.95, 12.7, 0.35,
+    qo_text_short = (
+        f"QO {qo_sign} ({qo_label}): " + (
+        "S&P views qualitative factors as STRONGER than SRM implies." if qo > 0 else
+        "S&P identified hidden risks not captured by the quantitative model." if qo < 0 else
+        "SRM model aligns with full qualitative assessment — no material adjustments."
+        ))
+    add_rect(sl, 0.3, 3.55, 12.7, 0.6,
              "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "F1F5F9"),
              line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, residual_text, 0.4, 3.98, 12.5, 0.28, size=8,
+    add_text(sl, qo_text_short, 0.4, 3.6, 12.5, 0.5, size=9,
              color="065f46" if qo > 0 else ("991b1b" if qo < 0 else "475569"))
 
     # ── SLIDE 3: PEER COMPARISON — PILLAR SCORES ──────────────────────────────
@@ -1145,144 +1154,169 @@ def generate_pptx(target, r, srm_rating, qo,
                     x_pos = 0.3 + j * 6.5
                     add_image_buf(sl, cbuf, x_pos, 0.85, 6.3, 6.2)
 
-    # ── SLIDE: RECOMMENDATION EXECUTIVE SUMMARY ───────────────────────────────
+    # ── SLIDE: RECOMMENDATION ─────────────────────────────────────────────────
     sl = blank_slide()
     sl.background.fill.solid()
     sl.background.fill.fore_color.rgb = rgb("F8FAFC")
     add_rect(sl, 0, 0, 13.33, 0.7, "1E3A8A")
-    add_text(sl, "3. Recommendation — Executive Summary",
+    add_text(sl, "3. Recommendation — Strengths & Weaknesses",
              0.3, 0.1, 12, 0.5, size=14, bold=True, color="FFFFFF")
 
-    # Recompute counts for pptx
-    strength_sigs_p  = [s for s in signals if s["type"] == "strength"]
-    moderate_sigs_p  = [s for s in signals if s["type"] == "moderate"]
-    weakness_sigs_p  = [s for s in signals if s["type"] == "weakness"]
-    upgrade_count_p  = len(strength_sigs_p)
-    moderate_count_p = len(moderate_sigs_p)
-    weakness_count_p = len(weakness_sigs_p)
+    weakness_sigs = [s for s in signals if s["type"] == "weakness"]
+    strength_sigs = [s for s in signals if s["type"] == "strength"]
 
-    top_str_p = [s['metric'] for s in strength_sigs_p][:3]
-    top_wk_p  = [s['metric'] for s in weakness_sigs_p][:3]
-
-    if weakness_count_p == 0 and upgrade_count_p >= 3:
-        traj_p = "Upgrade Candidate"; traj_col_p = "065f46"; traj_bg_p = "d1fae5"
-    elif weakness_count_p >= 3:
-        traj_p = "Downgrade Risk";    traj_col_p = "991b1b"; traj_bg_p = "fee2e2"
-    elif weakness_count_p >= 1 and moderate_count_p >= 2:
-        traj_p = "Stable with Caution"; traj_col_p = "78350f"; traj_bg_p = "fef3c7"
-    else:
-        traj_p = "Broadly Stable";   traj_col_p = "1e3a8a"; traj_bg_p = "EFF6FF"
-
-    # Trajectory banner
-    add_rect(sl, 0.3, 0.85, 12.7, 0.5, traj_bg_p, line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, f"Rating Trajectory: {traj_p}",
-             0.4, 0.9, 12.5, 0.38, size=13, bold=True, color=traj_col_p)
-
-    # Rating derivation row
-    add_rect(sl, 0.3, 1.45, 12.7, 0.5, "F1F5F9", line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl,
-             f"SRM: {srm_rating}  →  Post-Supplemental: {final_indicative}  "
-             f"→  Official: {r['Actual_Rating']}  |  "
-             f"IE: {prof_ie:.2f}  FP: {prof_fp:.2f}  |  Residual: {int(qo):+} notch",
-             0.4, 1.5, 12.5, 0.38, size=10, color="1e3a8a", bold=True)
-
-    # Supplemental note
-    if supp_factors:
-        supp_p = (f"⚡ Supplemental: "
-                  f"{', '.join([f['factor'] for f in supp_factors])} "
-                  f"({int(supp_adj):+} notch)")
-    elif cap_note:
-        supp_p = f"🚧 Cap: {cap_note}"
-    else:
-        supp_p = f"✅ No supplemental factors — SRM {srm_rating} carried through unchanged"
-
-    add_rect(sl, 0.3, 2.05, 12.7, 0.4,
-             "fee2e2" if supp_factors else "d1fae5",
-             line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, supp_p, 0.4, 2.1, 12.5, 0.3, size=9,
-             color="991b1b" if supp_factors else "065f46")
-
-    # Signal count cards
-    for i, (label, count, bg, fg) in enumerate([
-        (f"✅ Strong Signals",   upgrade_count_p,  "d1fae5", "065f46"),
-        (f"⚠️ Watch Areas",      moderate_count_p, "fef3c7", "78350f"),
-        (f"❌ Weak Signals",     weakness_count_p, "fee2e2", "991b1b"),
-    ]):
-        x = 0.3 + i * 4.3
-        add_rect(sl, x, 2.6, 4.0, 0.9, bg, line_hex="CBD5E1", line_w=Pt(0.5))
-        add_text(sl, str(count), x, 2.65, 4.0, 0.5,
-                 size=28, bold=True, color=fg, align=PP_ALIGN.CENTER)
-        add_text(sl, label, x, 3.15, 4.0, 0.28,
-                 size=9, color=fg, align=PP_ALIGN.CENTER)
-
-    # Key strengths
-    add_text(sl, "Key Strengths:", 0.3, 3.65, 6.2, 0.3, size=10, bold=True, color="065f46")
-    y_s = 3.98
-    for s in strength_sigs_p[:4]:
-        add_rect(sl, 0.3, y_s, 6.2, 0.45, "f0fdf4", line_hex="6ee7b7", line_w=Pt(0.3))
+    # Left: weaknesses
+    add_rect(sl, 0.2, 0.8, 6.2, 0.4, "fee2e2")
+    add_text(sl, f"❌ Key Weaknesses ({len(weakness_sigs)})",
+             0.3, 0.83, 6, 0.35, size=11, bold=True, color="991b1b")
+    y_w = 1.3
+    for s in weakness_sigs[:5]:
+        add_rect(sl, 0.2, y_w, 6.2, 0.62, "fff5f5", line_hex="fca5a5", line_w=Pt(0.5))
         add_text(sl, f"[{s['pillar']}] {s['metric']} — {s['value']}",
-                 0.4, y_s + 0.05, 6.0, 0.35, size=8, color="065f46")
-        y_s += 0.5
+                 0.3, y_w + 0.02, 6.0, 0.25, size=8, bold=True, color="991b1b")
+        add_text(sl, s["action"][:90],
+                 0.3, y_w + 0.27, 6.0, 0.3, size=7.5, color="374151")
+        y_w += 0.68
 
-    # Key weaknesses
-    add_text(sl, "Key Weaknesses:", 6.9, 3.65, 6.2, 0.3, size=10, bold=True, color="991b1b")
-    y_w = 3.98
-    for s in weakness_sigs_p[:4]:
-        add_rect(sl, 6.9, y_w, 6.2, 0.45, "fff5f5", line_hex="fca5a5", line_w=Pt(0.3))
+    # Right: strengths
+    add_rect(sl, 6.9, 0.8, 6.2, 0.4, "d1fae5")
+    add_text(sl, f"✅ Key Strengths ({len(strength_sigs)})",
+             7.0, 0.83, 6, 0.35, size=11, bold=True, color="065f46")
+    y_s = 1.3
+    for s in strength_sigs[:5]:
+        add_rect(sl, 6.9, y_s, 6.2, 0.62, "f0fdf4", line_hex="6ee7b7", line_w=Pt(0.5))
         add_text(sl, f"[{s['pillar']}] {s['metric']} — {s['value']}",
-                 7.0, y_w + 0.05, 6.0, 0.35, size=8, color="991b1b")
-        y_w += 0.5
+                 7.0, y_s + 0.02, 6.0, 0.25, size=8, bold=True, color="065f46")
+        add_text(sl, s["action"][:90],
+                 7.0, y_s + 0.27, 6.0, 0.3, size=7.5, color="374151")
+        y_s += 0.68
 
-    # ── SLIDE: QO IN-DEPTH ────────────────────────────────────────────────────
+    # ── SLIDE: QO IN-DEPTH — Peer Comparison Table ───────────────────────────
+    # Use full df_master for BBB peer group
+    _peer_df2 = df_master if df_master is not None and not df_master.empty else \
+                pd.DataFrame([{
+                    "Country": c["Country"],
+                    "Actual_Rating": c["_nr"]["Actual_Rating"]
+                } for c in comp_list]) if comp_list else pd.DataFrame()
+
+    _, _, peer_countries_pptx, comp_rows_pptx = _compute_peer_qo_data(
+        target, trend_df, _peer_df2, RATING_TO_NUM)
+
+    strengths_pptx  = sorted([r2 for r2 in comp_rows_pptx if r2["is_better"]],
+                               key=lambda x: x["pct_diff"], reverse=True)
+    weaknesses_pptx = [r2 for r2 in comp_rows_pptx if r2["is_worse"]]
+
     sl = blank_slide()
     sl.background.fill.solid()
     sl.background.fill.fore_color.rgb = rgb("F8FAFC")
     add_rect(sl, 0, 0, 13.33, 0.7, "0D9488")
-    add_text(sl, "4. Qualitative Overlay (QO) — In-Depth Targeting",
-             0.3, 0.1, 12, 0.5, size=14, bold=True, color="FFFFFF")
+    add_text(sl, "4a. QO Targeting — Performance vs BBB Peers (Latest Estimate)",
+             0.3, 0.1, 12, 0.5, size=13, bold=True, color="FFFFFF")
 
-    add_rect(sl, 0.2, 0.8, 12.9, 0.55,
+    # Rating derivation banner
+    add_rect(sl, 0.2, 0.78, 12.9, 0.42,
              "d1fae5" if qo > 0 else ("fee2e2" if qo < 0 else "EFF6FF"),
              line_hex="CBD5E1", line_w=Pt(0.5))
-    add_text(sl, f"Net QO: {qo_sign} notch ({qo_label})  |  "
-                 f"SRM: {srm_rating}  →  Actual: {r['Actual_Rating']}",
-             0.4, 0.85, 12.5, 0.4, size=12, bold=True,
+    add_text(sl,
+             f"Residual: {qo_sign} notch ({qo_label})  |  "
+             f"SRM: {srm_rating}  Post-Suppl: {final_indicative}  Official: {r['Actual_Rating']}  |  "
+             f"BBB Peers: {len(peer_countries_pptx)}",
+             0.4, 0.82, 12.5, 0.32, size=9, bold=True,
              color="065f46" if qo > 0 else ("991b1b" if qo < 0 else "1E3A8A"))
 
-    # Opportunities
-    y_o = 1.5
-    if qo_opportunities:
-        add_text(sl, "Narrative Opportunities to Earn QO Points:",
+    # Peer comparison mini-table as image
+    if comp_rows_pptx:
+        import matplotlib.pyplot as _plt
+        import matplotlib.patches as _mp
+        fig, ax = _plt.subplots(figsize=(13, 4.5))
+        ax.axis("off")
+        col_labels = ["Indicator", target, "BBB Avg", "Diff", "Signal"]
+        cell_data  = [
+            [r2["label"],
+             f"{r2['t_val']:.1f}",
+             f"{r2['p_avg']:.1f}",
+             f"{r2['diff']:+.1f}",
+             "Above" if r2["is_better"] else ("Below" if r2["is_worse"] else "In line")]
+            for r2 in comp_rows_pptx
+        ]
+        tbl = ax.table(cellText=cell_data, colLabels=col_labels,
+                       loc="center", cellLoc="center")
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(9)
+        tbl.scale(1, 1.3)
+        for ri, r2 in enumerate(comp_rows_pptx):
+            for ci in [1, 3, 4]:
+                cell = tbl[ri+1, ci]
+                if r2["is_better"]:   cell.set_facecolor("#d1fae5")
+                elif r2["is_worse"]:  cell.set_facecolor("#fee2e2")
+        fig.tight_layout()
+        tbuf = io.BytesIO()
+        fig.savefig(tbuf, format="png", dpi=150, bbox_inches="tight")
+        _plt.close(fig)
+        tbuf.seek(0)
+        add_image_buf(sl, tbuf, 0.3, 1.3, 12.7, 4.0)
+
+    # ── SLIDE: QO RANKED ARGUMENTS ────────────────────────────────────────────
+    sl = blank_slide()
+    sl.background.fill.solid()
+    sl.background.fill.fore_color.rgb = rgb("F8FAFC")
+    add_rect(sl, 0, 0, 13.33, 0.7, "0D9488")
+    add_text(sl, "4b. QO Targeting — Ranked Arguments & Strategy",
+             0.3, 0.1, 12, 0.5, size=13, bold=True, color="FFFFFF")
+
+    y_o = 0.82
+    if strengths_pptx:
+        add_text(sl, f"Top QO Arguments — {target} vs BBB Peers:",
                  0.3, y_o, 12.5, 0.3, size=10, bold=True, color="1E3A8A")
         y_o += 0.35
-        for opp in qo_opportunities[:4]:
-            impact_col = "065f46" if "+" in opp["impact"] else "6366f1"
-            add_rect(sl, 0.2, y_o, 12.9, 0.75, "EFF6FF",
-                     line_hex="BFDBFE", line_w=Pt(0.5))
-            add_text(sl, f"⚖ {opp['factor']}  [{opp['impact']}]",
-                     0.35, y_o + 0.04, 9, 0.28, size=9, bold=True, color=impact_col)
-            arg_short = opp["argument"][:160] + ("…" if len(opp["argument"]) > 160 else "")
-            add_text(sl, arg_short, 0.35, y_o + 0.3, 12.5, 0.38, size=8, color="374151")
-            y_o += 0.82
 
-    # Peer QO comparison
-    if len(comp_list) > 1:
-        add_text(sl, "QO Peer Comparison:",
-                 0.3, y_o, 12, 0.28, size=10, bold=True, color="1E3A8A")
-        y_o += 0.3
-        for c in comp_list:
-            cqo = int(c['_qo'])
-            col = "065f46" if cqo > 0 else ("991b1b" if cqo < 0 else "475569")
-            bg2 = "d1fae5" if cqo > 0 else ("fee2e2" if cqo < 0 else "F1F5F9")
-            add_rect(sl, 0.2, y_o, 12.9, 0.38, bg2,
-                     line_hex="CBD5E1", line_w=Pt(0.3))
+        for i, r2 in enumerate(strengths_pptx[:4], 1):
+            pct = r2["pct_diff"]
+            if pct >= 30:   bg_c = "d1fae5"; fg_c = "065f46"; lbl = "Very Strong"
+            elif pct >= 15: bg_c = "dbeafe"; fg_c = "1e3a8a"; lbl = "Strong"
+            else:           bg_c = "ede9fe"; fg_c = "6366f1"; lbl = "Supporting"
+
+            add_rect(sl, 0.2, y_o, 12.9, 0.88, bg_c, line_hex=fg_c, line_w=Pt(0.5))
             add_text(sl,
-                     f"{c['Country']}  |  Actual: {c['_nr']['Actual_Rating']}  "
-                     f"SRM: {c['_srm']}  QO: {cqo:+}  "
-                     f"IE: {c['_ie']:.2f}  FP: {c['_fp']:.2f}",
-                     0.35, y_o + 0.05, 12.5, 0.28, size=9, color=col)
-            y_o += 0.42
-            if y_o > 7.0: break
+                     f"#{i} [{lbl}] {r2['factor']} | {r2['label']}  "
+                     f"{target}: {r2['t_val']:.1f} vs BBB avg: {r2['p_avg']:.1f} "
+                     f"({r2['diff']:+.1f}, {pct:.0f}% outperformance)",
+                     0.35, y_o + 0.04, 12.5, 0.3, size=9, bold=True, color=fg_c)
+            arg_short = r2["argument"][:200] + ("…" if len(r2["argument"]) > 200 else "")
+            add_text(sl, arg_short, 0.35, y_o + 0.36, 12.5, 0.46, size=8, color="374151")
+            y_o += 0.96
+            if y_o > 6.2: break
+
+        # Strategy box
+        if y_o < 6.8:
+            top_factors = list(dict.fromkeys([r2["factor"] for r2 in strengths_pptx[:3]]))
+            strategy = (
+                f"Lead with {strengths_pptx[0]['label']} "
+                f"({strengths_pptx[0]['t_val']:.1f} vs avg {strengths_pptx[0]['p_avg']:.1f}, "
+                f"{strengths_pptx[0]['pct_diff']:.0f}% outperformance). "
+                f"Target QO factors: {', '.join(top_factors)}."
+            )
+            add_rect(sl, 0.2, y_o, 12.9, 0.55, "1E3A8A")
+            add_text(sl, f"🎯 Strategy: {strategy}",
+                     0.35, y_o + 0.08, 12.5, 0.4, size=9, color="FFFFFF")
+    else:
+        add_text(sl,
+                 f"No indicators where {target} outperforms BBB peers. "
+                 "Focus on addressing weaknesses before building a QO upgrade narrative.",
+                 0.3, y_o, 12.5, 0.4, size=10, color="991b1b")
+        y_o += 0.5
+
+    # Weaknesses note
+    if weaknesses_pptx and y_o < 6.8:
+        y_o += 0.15
+        add_text(sl, f"⚠️ Underperforming vs BBB peers ({len(weaknesses_pptx)} indicators — address to protect QO):",
+                 0.3, y_o, 12.5, 0.28, size=9, bold=True, color="991b1b")
+        y_o += 0.32
+        wk_txt = "  |  ".join([
+            f"{r2['label']}: {r2['t_val']:.1f} vs {r2['p_avg']:.1f} ({r2['diff']:+.1f})"
+            for r2 in weaknesses_pptx[:4]
+        ])
+        add_text(sl, wk_txt, 0.3, y_o, 12.5, 0.3, size=8, color="7f1d1d")
 
     # Footer slide
     sl = blank_slide()
@@ -1294,12 +1328,7 @@ def generate_pptx(target, r, srm_rating, qo,
              1, 3.6, 11.33, 0.6, size=16, color="94A3B8", align=PP_ALIGN.CENTER)
     add_text(sl, f"Generated {date_str}  |  Based on S&P Global Methodology",
              1, 4.4, 11.33, 0.4, size=11, color="64748B", align=PP_ALIGN.CENTER)
-    add_text(sl,
-             "Methodology: S&P Global Ratings — Sovereign Rating Methodology (Dec 2017, updated Oct 2024)",
-             1, 5.0, 11.33, 0.3, size=9, color="64748B", align=PP_ALIGN.CENTER)
-    add_text(sl,
-             "spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157",
-             1, 5.3, 11.33, 0.3, size=9, color="1E3A8A", align=PP_ALIGN.CENTER)
+
     out = io.BytesIO()
     prs.save(out)
     out.seek(0)

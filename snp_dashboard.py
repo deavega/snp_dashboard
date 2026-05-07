@@ -603,6 +603,17 @@ if f_macro:
     if df is not None:
         tabs = st.tabs(["📊 National Portfolio", "📉 Peer Comparison", "💡 Recommendation", "📄 Briefing Notes", "🧪 Methodology Simulator"])
 
+        # ── Load trend data once — available to ALL tabs ──────────────────────
+        with st.spinner("Extracting trend data..."):
+            if hasattr(f_macro, 'getvalue'):
+                xls_bytes = f_macro.getvalue()   # Streamlit UploadedFile
+            else:
+                f_macro.seek(0)
+                xls_bytes = f_macro.read()       # BytesIO from default file
+            if hasattr(f_macro, 'seek'):
+                f_macro.seek(0)                  # reset for any subsequent reads
+            trend_df = extract_trend_data(xls_bytes)
+
         with tabs[0]: # NATION ANALYSIS & OVERLAY
             target = st.selectbox("Select Sovereign Target", df['Country'].unique(), 
                                    index=list(df['Country']).index('Indonesia') if 'Indonesia' in df['Country'].values else 0)
@@ -1216,15 +1227,11 @@ if f_macro:
                 st.markdown("#### 📈 Historical & Forecast Indicator Trends")
                 st.caption("Data spans all available years from the uploaded dataset. Shaded years are estimates/forecasts.")
 
-                # Load trend data (cached)
-                with st.spinner("Extracting trend data..."):
-                    if hasattr(f_macro, 'getvalue'):
-                        xls_bytes = f_macro.getvalue()   # Streamlit UploadedFile
-                    else:
-                        f_macro.seek(0)
-                        xls_bytes = f_macro.read()       # BytesIO from default file
-                        f_macro.seek(0)                  # reset for any subsequent reads
-                    trend_df = extract_trend_data(xls_bytes)
+                # trend_df already loaded above
+                if trend_df is None or trend_df.empty:
+                    st.warning("No trend data available.")
+                else:
+                    trend_filtered = trend_df[trend_df['Country'].isin(sel_nations)].copy()
 
                 if trend_df.empty:
                     st.warning("Could not extract trend data from this file.")
@@ -2574,6 +2581,7 @@ if f_macro:
                             supp_factors=supp_factors,
                             final_indicative=final_indicative,
                             cap_note=cap_note,
+                            df_master=df,
                         )
                     
                     st.download_button(
@@ -2605,6 +2613,7 @@ if f_macro:
                             supp_factors=supp_factors,
                             final_indicative=final_indicative,
                             cap_note=cap_note,
+                            df_master=df,
                     )
                     st.download_button(
                         label="⬇️ Download PowerPoint",
