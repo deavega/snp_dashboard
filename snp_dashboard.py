@@ -2069,26 +2069,347 @@ if f_macro:
 
             st.divider()
 
-            # ── Section 4: QO Narrative Opportunities ─────────────────
-            st.markdown("### 🗣️ QO Narrative Opportunities")
-            st.markdown("Arguments that can be made in the S&P rating committee dialogue to earn or protect QO points:")
+            # ── QO NARRATIVE OPPORTUNITIES ────────────────────────────────────
+            
+            st.markdown("### 🗣️ Qualitative Overlay (QO) — Narrative Targeting")
+            st.markdown(
+                "Arguments that can be made in the S&P rating committee dialogue to earn or protect "
+                "residual ±1 notch adjustment points. Peer comparison uses **BBB-tier average (2025e)** "
+                "as the benchmark."
+            )
 
-            if qo_opportunities:
-                for opp in qo_opportunities:
-                    impact_color = "#10b981" if "+" in opp["impact"] else "#6366f1"
-                    st.markdown(f"""
-                    <div style="padding:16px; border-radius:10px; background:#f0f4ff; border-left:5px solid {impact_color}; margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="font-size:14px; font-weight:700; color:#1e3a8a;">⚖️ {opp['factor']}</div>
-                            <div style="font-size:12px; font-weight:700; color:{impact_color}; background:{impact_color}22; padding:3px 10px; border-radius:20px;">{opp['impact']}</div>
+            # ── Build peer comparison data ────────────────────────────────────
+            # Determine target's rating tier for peer group
+            actual_rating_clean = str(r['Actual_Rating']).replace('*','').strip()
+            target_rating_num   = RATING_TO_NUM.get(actual_rating_clean, 8)
+
+            # BBB tier = BBB-, BBB, BBB+ (nums 7,8,9)
+            # Expand to include ±1 notch from actual rating for broader peer set
+            peer_rating_nums = [
+                RATING_TO_NUM.get('BBB-', 7),
+                RATING_TO_NUM.get('BBB',  8),
+                RATING_TO_NUM.get('BBB+', 9),
+            ]
+            peer_countries = [
+                c for c in df['Country'].tolist()
+                if RATING_TO_NUM.get(
+                    str(df[df['Country']==c]['Actual_Rating'].values[0]).replace('*','').strip(), -1
+                ) in peer_rating_nums
+                and c != target
+            ]
+
+            # Extract 2025e values from trend_df for peer comparison
+            PEER_METRICS = {
+                'Real GDP Growth (%)':      ('growth',   True,   "Real GDP growth (%)"),
+                'Fiscal Balance (% GDP)':   ('balance',  True,   "GG balance/GDP (%)"),
+                'Debt-to-GDP (%)':          ('debt',     False,  "Net GG debt/GDP (%)"),
+                'Interest/Revenue (%)':     ('int_rev',  False,  "GG interest expenditure/revenues (%)"),
+                'GEFN (% CAR)':             ('gefn',     False,  "Gross ext. fin. needs/(CAR + use. res.) (%)"),
+                'Reserves (months)':        ('reserves', True,   "Usable reserves/CAPs (months)"),
+                'CPI Inflation (%)':        ('cpi',      False,  "CPI growth (%)"),
+                'Financial Depth (% GDP)':  ('findep',   True,   "Banks' claims on resident non-gov't sector/GDP"),
+            }
+
+            # Get latest estimate (prefer 2025e, fall back to last non-f year)
+            def get_latest_est(country, raw_metric):
+                """Get latest estimate value from trend_df for a country/metric."""
+                try:
+                    sub = trend_df[
+                        (trend_df['Country'] == country) &
+                        (trend_df['Metric'] == raw_metric)
+                    ].copy()
+                    if sub.empty: return np.nan
+                    sub['_s'] = sub['Year'].apply(
+                        lambda y: float(str(y).replace('e','').replace('f',''))
+                        if not str(y).strip().endswith('f') else -1
+                    )
+                    sub = sub[sub['_s'] > 0]  # exclude forecasts
+                    if sub.empty: return np.nan
+                    return float(sub.sort_values('_s').iloc[-1]['Value'])
+                except:
+                    return np.nan
+
+            # Compute peer averages
+            peer_avgs = {}
+            target_vals = {}
+            for label, (key, higher_better, raw_metric) in PEER_METRICS.items():
+                peer_vals = []
+                for pc in peer_countries:
+                    v = get_latest_est(pc, raw_metric)
+                    if not np.isnan(v):
+                        peer_vals.append(v)
+                peer_avgs[label] = np.nanmean(peer_vals) if peer_vals else np.nan
+                target_vals[label] = get_latest_est(target, raw_metric)
+
+            # ── Peer comparison table ─────────────────────────────────────────
+            st.markdown(f"#### 📊 Performance vs BBB Peer Average ({len(peer_countries)} peers, 2025e)")
+
+            if peer_countries:
+                comp_rows = []
+                for label, (key, higher_better, raw_metric) in PEER_METRICS.items():
+                    t_val  = target_vals.get(label, np.nan)
+                    p_avg  = peer_avgs.get(label, np.nan)
+                    if np.isnan(t_val) or np.isnan(p_avg):
+                        continue
+                    diff   = t_val - p_avg
+                    # Is target better than peer?
+                    is_better = (diff > 0) if higher_better else (diff < 0)
+                    is_worse  = (diff < 0) if higher_better else (diff > 0)
+                    signal = "🟢 Above peers" if is_better else ("🔴 Below peers" if is_worse else "⚪ In line")
+                    comp_rows.append({
+                        "Indicator":    label,
+                        f"{target}":   f"{t_val:.1f}",
+                        "BBB Peer Avg": f"{p_avg:.1f}",
+                        "Difference":   f"{diff:+.1f}",
+                        "vs Peers":     signal,
+                        "_better":      is_better,
+                        "_worse":       is_worse,
+                        "_diff":        abs(diff),
+                        "_higher":      higher_better,
+                    })
+
+                if comp_rows:
+                    comp_df_display = pd.DataFrame(comp_rows)
+
+                    GREEN_P  = "background-color:#d1fae5;color:#065f46;font-weight:600;"
+                    RED_P    = "background-color:#fee2e2;color:#991b1b;font-weight:600;"
+                    NEUTRAL  = ""
+
+                    def style_peer_table(df):
+                        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                        for i, row in df.iterrows():
+                            if row["_better"]:
+                                styles.loc[i, f"{target}"] = GREEN_P
+                                styles.loc[i, "Difference"] = GREEN_P
+                                styles.loc[i, "vs Peers"]   = GREEN_P
+                            elif row["_worse"]:
+                                styles.loc[i, f"{target}"] = RED_P
+                                styles.loc[i, "Difference"] = RED_P
+                                styles.loc[i, "vs Peers"]   = RED_P
+                        return styles
+
+                    display_cols = ["Indicator", f"{target}", "BBB Peer Avg", "Difference", "vs Peers"]
+                    st.dataframe(
+                        comp_df_display[display_cols].style.apply(style_peer_table, axis=None),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                # ── QO argument cards ─────────────────────────────────────────
+                st.markdown("#### 💬 Data-Driven QO Arguments")
+                st.caption(
+                    "Arguments ranked by strength — those where the target country "
+                    "materially outperforms peers are the most compelling in a rating committee dialogue."
+                )
+
+                # Sort by strength of outperformance
+                strengths_for_qo = sorted(
+                    [r2 for r2 in comp_rows if r2["_better"]],
+                    key=lambda x: x["_diff"], reverse=True
+                )
+                weaknesses_for_qo = [r2 for r2 in comp_rows if r2["_worse"]]
+
+                # Map indicator to QO factor
+                QO_FACTOR_MAP = {
+                    'Real GDP Growth (%)':     'Fiscal Flexibility & Economic Resilience',
+                    'Fiscal Balance (% GDP)':  'Fiscal Flexibility',
+                    'Debt-to-GDP (%)':         'Fiscal Flexibility',
+                    'Interest/Revenue (%)':    'Fiscal Flexibility',
+                    'GEFN (% CAR)':            'External Liquidity & IIP',
+                    'Reserves (months)':       'External Liquidity & IIP',
+                    'CPI Inflation (%)':       'Monetary Flexibility',
+                    'Financial Depth (% GDP)': 'Monetary Flexibility',
+                }
+
+                QO_NARRATIVE_TEMPLATE = {
+                    'Real GDP Growth (%)': (
+                        "Growth of {t_val:.1f}% vs BBB peer average of {p_avg:.1f}% — "
+                        "outperformance of {diff:+.1f}pp. S&P para. 15 explicitly recognises "
+                        "sustained over-performance vs similarly rated peers as a basis for "
+                        "positive residual adjustment. Highlight multi-year trend growth "
+                        "trajectory, not just the current-year estimate."
+                    ),
+                    'Fiscal Balance (% GDP)': (
+                        "Fiscal balance of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp advantage. A tighter deficit demonstrates greater "
+                        "fiscal discipline than the BBB cohort and supports the argument for "
+                        "fiscal flexibility under the QO Fiscal Flexibility factor."
+                    ),
+                    'Debt-to-GDP (%)': (
+                        "Net debt of {t_val:.1f}% of GDP vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp lower. Below-peer debt burden provides greater shock "
+                        "absorption capacity and supports a positive Fiscal Flexibility argument. "
+                        "Emphasise declining debt trajectory in medium-term fiscal framework."
+                    ),
+                    'Interest/Revenue (%)': (
+                        "Interest-to-revenue of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp advantage. Lower debt servicing cost relative to revenues "
+                        "signals stronger fiscal headroom than peers — a compelling Fiscal "
+                        "Flexibility argument in the QO dialogue."
+                    ),
+                    'GEFN (% CAR)': (
+                        "GEFN of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp lower external rollover need. Demonstrates superior "
+                        "external liquidity management relative to the BBB cohort. Use as "
+                        "an External Liquidity & IIP positive argument."
+                    ),
+                    'Reserves (months)': (
+                        "Reserve coverage of {t_val:.1f} months vs peer average of {p_avg:.1f} months. "
+                        "Above-peer reserve buffer reduces vulnerability to sudden stop scenarios "
+                        "and supports the External Liquidity & IIP QO factor."
+                    ),
+                    'CPI Inflation (%)': (
+                        "Inflation of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp lower. Price stability closer to trading partner levels "
+                        "supports monetary credibility arguments under the Monetary Flexibility "
+                        "QO factor. Emphasise central bank independence and track record."
+                    ),
+                    'Financial Depth (% GDP)': (
+                        "Financial depth of {t_val:.1f}% of GDP vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp advantage. Deeper financial system enhances monetary "
+                        "transmission effectiveness, supporting the Monetary Flexibility "
+                        "QO factor argument."
+                    ),
+                }
+
+                if strengths_for_qo:
+                    for i, row2 in enumerate(strengths_for_qo, 1):
+                        label    = row2["Indicator"]
+                        t_val    = float(row2[f"{target}"])
+                        p_avg    = float(row2["BBB Peer Avg"])
+                        diff     = t_val - p_avg
+                        factor   = QO_FACTOR_MAP.get(label, "General Assessment")
+                        template = QO_NARRATIVE_TEMPLATE.get(label, "")
+                        argument = template.format(
+                            t_val=t_val, p_avg=p_avg, diff=diff) if template else ""
+
+                        # Strength of argument
+                        pct_diff = abs(diff) / abs(p_avg) * 100 if p_avg != 0 else 0
+                        if pct_diff >= 30:
+                            strength_label = "🔥 Very Strong Argument"
+                            strength_color = "#065f46"
+                            strength_bg    = "#d1fae5"
+                        elif pct_diff >= 15:
+                            strength_label = "💪 Strong Argument"
+                            strength_color = "#1e3a8a"
+                            strength_bg    = "#dbeafe"
+                        else:
+                            strength_label = "📌 Supporting Argument"
+                            strength_color = "#6366f1"
+                            strength_bg    = "#ede9fe"
+
+                        st.markdown(f"""
+                        <div style="padding:16px; border-radius:10px; background:{strength_bg};
+                                    border-left:5px solid {strength_color}; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="font-size:16px; font-weight:700; color:{strength_color};">
+                                    #{i} ⚖️ {factor}
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <span style="font-size:12px; font-weight:700; color:{strength_color};
+                                                 background:white; padding:3px 10px; border-radius:20px;">
+                                        {label}
+                                    </span>
+                                    <span style="font-size:12px; font-weight:700; color:white;
+                                                 background:{strength_color}; padding:3px 10px; border-radius:20px;">
+                                        {strength_label}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:24px; margin-bottom:8px;">
+                                <span style="font-size:13px; color:#374151;">
+                                    <b>{target}:</b> {t_val:.1f}
+                                </span>
+                                <span style="font-size:13px; color:#374151;">
+                                    <b>BBB Peer Avg:</b> {p_avg:.1f}
+                                </span>
+                                <span style="font-size:13px; font-weight:700; color:{strength_color};">
+                                    Outperformance: {diff:+.1f} ({pct_diff:.0f}% vs peers)
+                                </span>
+                            </div>
+                            <div style="font-size:15px; color:#1e293b; line-height:1.7;">
+                                {argument}
+                            </div>
                         </div>
-                        <div style="font-size:13px; color:#374151; margin-top:8px; line-height:1.6;">{opp['argument']}</div>
+                        """, unsafe_allow_html=True)
+
+                    # ── Overall QO recommendation ─────────────────────────────
+                    top_factors = list(dict.fromkeys(
+                        [QO_FACTOR_MAP.get(r2["Indicator"], "") for r2 in strengths_for_qo[:3]]
+                    ))
+                    st.markdown(f"""
+                    <div style="padding:16px; border-radius:10px; background:#1E3A8A;
+                                margin-top:8px; margin-bottom:8px;">
+                        <div style="font-size:15px; font-weight:700; color:white; margin-bottom:8px;">
+                            🎯 Overall QO Strategy for {target}
+                        </div>
+                        <div style="font-size:14px; color:#CADCFC; line-height:1.8;">
+                            Based on peer comparison, the strongest QO arguments centre on
+                            <b style="color:white;">{', '.join(top_factors)}</b>.
+                            In the rating committee dialogue, lead with the
+                            <b style="color:white;">{strengths_for_qo[0]['Indicator']}</b> advantage
+                            ({float(strengths_for_qo[0][target]):.1f} vs peer avg
+                            {float(strengths_for_qo[0]['BBB Peer Avg']):.1f}),
+                            which represents the largest relative outperformance vs the BBB cohort
+                            at {float(strengths_for_qo[0]['_diff']) / abs(float(strengths_for_qo[0]['BBB Peer Avg'])) * 100:.0f}%.
+                            {'Pair this with the weakness mitigation narrative below to demonstrate a balanced credit profile.' if weaknesses_for_qo else 'The absence of material weaknesses vs peers further strengthens the case for a positive residual adjustment.'}
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
-            else:
-                st.warning("Based on current data, limited QO narrative opportunities are available. Focus on addressing weaknesses first to unlock positive QO arguments.")
 
-            st.divider()
+                else:
+                    st.warning(
+                        f"No indicators where {target} materially outperforms BBB peers. "
+                        "Focus on addressing weaknesses before building a QO upgrade narrative."
+                    )
+
+                # ── Areas to mitigate ─────────────────────────────────────────
+                if weaknesses_for_qo:
+                    with st.expander(f"⚠️ Areas where {target} underperforms peers ({len(weaknesses_for_qo)} indicators) — address to protect QO"):
+                        for row2 in weaknesses_for_qo:
+                            label  = row2["Indicator"]
+                            t_val  = float(row2[f"{target}"])
+                            p_avg  = float(row2["BBB Peer Avg"])
+                            diff   = t_val - p_avg
+                            st.markdown(f"""
+                            <div style="padding:10px; border-radius:8px; background:#fff5f5;
+                                        border-left:4px solid #ef4444; margin-bottom:8px;">
+                                <b style="color:#991b1b;">{label}</b>
+                                &nbsp;|&nbsp;
+                                {target}: <b>{t_val:.1f}</b>
+                                &nbsp;vs BBB Peer Avg: <b>{p_avg:.1f}</b>
+                                &nbsp;(<span style="color:#991b1b; font-weight:600;">{diff:+.1f}</span>)
+                                <br>
+                                <span style="font-size:13px; color:#7f1d1d;">
+                                    Underperformance vs peers may be flagged by S&P as a negative
+                                    residual factor — address proactively in rating dialogue.
+                                </span>
+                            </div>
+                            """, unsafe_allow_html=True)
+            else:
+                # No peer trend data — fall back to original static opportunities
+                if qo_opportunities:
+                    for opp in qo_opportunities:
+                        impact_color = "#10b981" if "+" in opp["impact"] else "#6366f1"
+                        st.markdown(f"""
+                        <div style="padding:16px; border-radius:10px; background:#f0f4ff;
+                                    border-left:5px solid {impact_color}; margin-bottom:14px;">
+                            <div style="font-size:16px; font-weight:700; color:#1e3a8a;">
+                                ⚖️ {opp['factor']}
+                                <span style="font-size:13px; font-weight:700; color:{impact_color};
+                                             background:{impact_color}22; padding:3px 10px;
+                                             border-radius:20px; margin-left:8px;">{opp['impact']}</span>
+                            </div>
+                            <div style="font-size:15px; color:#374151; margin-top:8px; line-height:1.7;">
+                                {opp['argument']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.warning(
+                        "No QO narrative opportunities identified. "
+                        "Visit the Peer Comparison tab to load peer data for enhanced analysis."
+                    )
 
             # ── Section 5: Rating Trajectory Summary ──────────────────
             st.markdown("### 📈 Rating Trajectory Summary")
