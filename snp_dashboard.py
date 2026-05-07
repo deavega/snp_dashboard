@@ -2656,7 +2656,7 @@ if f_macro:
             sim_event_risk     = sc1.toggle("Event Risk (imminent political/security risk)", value=False)
             sim_liquid_assets  = sc1.number_input("Liquid Govt Assets (% GDP)", value=0.0, step=1.0,
                                                    help="Values >100% with net asset position → +1 notch uplift")
-            sc1.markdown("### Transitional Factors (para. 15)")
+            sc1.markdown("### Transitional Factors")
             sim_resource_discovery = sc1.toggle(
                 "Significant Resource Discovery",
                 value=False,
