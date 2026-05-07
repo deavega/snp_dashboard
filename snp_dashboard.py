@@ -977,11 +977,11 @@ if f_macro:
                 strength = (1 - (score - 1) / 5) * 100
                 color = "#2ecc71" if strength >= 60 else ("#f39c12" if strength >= 40 else "#e74c3c")
                 col.markdown(f"""
-                <div style="text-align:center; padding:12px; border-radius:8px; border: 1px solid #ddd;">
-                    <div style="font-size:13px; color:#666;">{name}</div>
-                    <div style="font-size:24px; font-weight:bold; color:{color};">{score:.1f}</div>
-                    <div style="font-size:11px; color:#999;">/ 6.0 · {profile}</div>
-                    <div style="font-size:12px; color:{color};">{strength:.0f}% strength</div>
+                <div style="text-align:center; padding:14px; border-radius:8px; border: 1px solid #ddd;">
+                    <div style="font-size:15px; color:#444; font-weight:600;">{name}</div>
+                    <div style="font-size:30px; font-weight:bold; color:{color};">{score:.1f}</div>
+                    <div style="font-size:13px; color:#777;">/ 6.0 · {profile}</div>
+                    <div style="font-size:13px; color:{color}; font-weight:600;">{strength:.0f}% strength</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1911,11 +1911,11 @@ if f_macro:
             st.markdown(f"""
             <div style="padding:16px 20px; border-radius:10px; background:{traj_bg};
                         border-left:5px solid {traj_color}; margin-bottom:20px;">
-                <div style="font-size:13px; color:{traj_color}; font-weight:700;
+                <div style="font-size:16px; color:{traj_color}; font-weight:700;
                             margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
                     Rating Trajectory: {trajectory.title()}
                 </div>
-                <p style="font-size:13px; color:#1e293b; line-height:1.7; margin:0;">
+                <p style="font-size:15px; color:#1e293b; line-height:1.8; margin:0;">
                     <b>{target}</b> holds an official S&P rating of <b>{r['Actual_Rating']}</b>,
                     derived from an SRM matrix output of <b>{srm_rating}</b>
                     (IE Profile: {prof_ie:.2f}, FP Profile: {prof_fp:.2f}).
