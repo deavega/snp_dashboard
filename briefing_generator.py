@@ -1462,28 +1462,23 @@ def generate_pptx(target, r, srm_rating, qo,
             if y_o > 6.2: break
 
         # Strategy box
-        if y_o < 6.8:
-            top_factors = list(dict.fromkeys([r2["factor"] for r2 in strengths_pptx[:3]]))
-            strategy = (
-                f"Lead with {strengths_pptx[0]['label']} "
-                f"({strengths_pptx[0]['t_val']:.1f} vs avg {strengths_pptx[0]['p_avg']:.1f}, "
-                f"{strengths_pptx[0]['pct_diff']:.0f}% outperformance). "
-                f"Target QO factors: {', '.join(top_factors)}."
-            )
-            add_rect(sl, 0.2, y_o, 12.9, 0.55, "1E3A8A")
+        top_factors = list(dict.fromkeys([r2["factor"] for r2 in strengths_pptx[:3]]))
+        strategy = (
+            f"Lead with {strengths_pptx[0]['label']} "
+            f"({strengths_pptx[0]['t_val']:.1f} vs avg {strengths_pptx[0]['p_avg']:.1f}, "
+            f"{strengths_pptx[0]['pct_diff']:.0f}% outperformance). "
+            f"Target QO factors: {', '.join(top_factors)}."
+        )
+        # Calculate strategy box height based on text length
+        strat_h = 0.65 if len(strategy) > 120 else 0.5
+        if y_o + strat_h < 6.3:
+            add_rect(sl, 0.2, y_o, 12.9, strat_h, "1E3A8A")
             add_text(sl, f"🎯 Strategy: {strategy}",
-                     0.35, y_o + 0.08, 12.5, 0.4, size=9, color="FFFFFF")
-    else:
-        add_text(sl,
-                 f"No indicators where {target} outperforms BBB peers. "
-                 "Focus on addressing weaknesses before building a QO upgrade narrative.",
-                 0.3, y_o, 12.5, 0.4, size=10, color="991b1b")
-        y_o += 0.5
+                     0.35, y_o + 0.08, 12.4, strat_h - 0.1, size=9, color="FFFFFF")
+            y_o += strat_h + 0.15   # ← advance y_o past the strategy box
 
-    # Weaknesses note — only show if there's space on the slide
-    if weaknesses_pptx and y_o < 6.5:
-        y_o += 0.15
-        # Put header and content in a single contained box
+    # Weaknesses note — only show if there's enough space remaining
+    if weaknesses_pptx and y_o < 6.2:
         wk_lines = [
             f"{r2['label']}: {r2['t_val']:.1f} vs BBB avg {r2['p_avg']:.1f} ({r2['diff']:+.1f})"
             for r2 in weaknesses_pptx[:3]
