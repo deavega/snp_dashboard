@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from briefing_generator import generate_pdf, generate_pptx
 import requests
 import io
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 def now_jakarta():
@@ -2777,6 +2778,78 @@ if f_macro:
                         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                         use_container_width=True,
                     )
+
+            # ── WhatsApp Share ────────────────────────────────────────────────
+            st.markdown("---")
+            st.markdown("### 📲 Share via WhatsApp")
+            st.markdown("Send a rating summary message via WhatsApp. Download the PDF/PPTX above first, then attach it in WhatsApp.")
+
+            wa_col1, wa_col2 = st.columns([2, 1])
+            with wa_col1:
+                wa_phone = st.text_input(
+                    "Recipient phone number (optional)",
+                    placeholder="+628123456789  — leave blank to open WhatsApp chat picker",
+                    help="Include country code, e.g. +6281234567890. Leave blank to choose the contact inside WhatsApp.",
+                )
+            with wa_col2:
+                wa_lang = st.selectbox("Message language", ["English", "Indonesian"], index=0)
+
+            def _build_wa_message(lang):
+                date_str = now_jakarta().strftime("%d %b %Y")
+                qo_sign  = f"+{int(qo)}" if qo > 0 else str(int(qo))
+                adj_sign = f"+{int(supp_adj)}" if supp_adj > 0 else str(int(supp_adj))
+                if lang == "Indonesian":
+                    msg = (
+                        f"*📊 Briefing Note Sovereign Rating — {target}*\n"
+                        f"_{date_str}_\n\n"
+                        f"*Rating Aktual S&P:* {r['Actual_Rating']}\n"
+                        f"*Output SRM:* {srm_rating}\n"
+                        f"*Setelah Supplemental ({adj_sign}):* {final_indicative}\n"
+                        f"*Penyesuaian QO:* {qo_sign} notch\n\n"
+                        f"*Skor Pilar:*\n"
+                        f"  • Institusional: {s_inst:.1f}\n"
+                        f"  • Ekonomi: {s_eco:.1f}\n"
+                        f"  • Fiskal: {s_fis:.1f}\n"
+                        f"  • Eksternal: {s_ext:.1f}\n"
+                        f"  • Moneter: {s_mon:.1f}\n\n"
+                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}\n\n"
+                        f"_Laporan lengkap terlampir._"
+                    )
+                else:
+                    msg = (
+                        f"*📊 Sovereign Rating Briefing Note — {target}*\n"
+                        f"_{date_str}_\n\n"
+                        f"*S&P Actual Rating:* {r['Actual_Rating']}\n"
+                        f"*SRM Matrix Output:* {srm_rating}\n"
+                        f"*Post-Supplemental ({adj_sign}):* {final_indicative}\n"
+                        f"*QO Adjustment:* {qo_sign} notch\n\n"
+                        f"*Pillar Scores:*\n"
+                        f"  • Institutional: {s_inst:.1f}\n"
+                        f"  • Economic: {s_eco:.1f}\n"
+                        f"  • Fiscal: {s_fis:.1f}\n"
+                        f"  • External: {s_ext:.1f}\n"
+                        f"  • Monetary: {s_mon:.1f}\n\n"
+                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}\n\n"
+                        f"_Full report attached._"
+                    )
+                return msg
+
+            wa_message = _build_wa_message(wa_lang)
+            st.text_area("Message preview", value=wa_message, height=230, disabled=True)
+
+            encoded_msg = urllib.parse.quote(wa_message)
+            phone_clean = wa_phone.strip().replace(" ", "").replace("-", "")
+            if phone_clean:
+                wa_url = f"https://wa.me/{phone_clean.lstrip('+')}?text={encoded_msg}"
+            else:
+                wa_url = f"https://wa.me/?text={encoded_msg}"
+
+            st.link_button(
+                "📲 Open WhatsApp & Send",
+                url=wa_url,
+                use_container_width=True,
+            )
+            st.caption("This will open WhatsApp Web or the WhatsApp app with the message pre-filled. Attach the downloaded PDF or PPTX file before sending.")
 
         with tabs[4]: # METHODOLOGY SIMULATOR (GAUGE STYLE)
             st.subheader("Interactive Stress-Test Simulator")
