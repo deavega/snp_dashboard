@@ -2707,11 +2707,6 @@ if f_macro:
             )
             st.divider()
 
-            st.caption(
-                "📖 Methodology: S&P Global Ratings — Sovereign Rating Methodology "
-                "(Dec 2017, updated Oct 2024). "
-                "https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157"
-            )
 
             # ── Session state: persist PDF bytes and file.io link per target ──
             if st.session_state.get("_briefing_target") != target:
@@ -2894,11 +2889,13 @@ if f_macro:
                 return msg
 
             wa_message = _build_wa_message(wa_lang, _file_url)
-            st.text_area("Message preview", value=wa_message, height=250, disabled=True)
 
             if not _file_url:
-                st.caption("💡 No PDF link yet — click **Upload & get shareable link** above and it will appear here automatically.")
-            else:
+                st.info("📎 To attach the PDF: **① Generate PDF** → **② Upload & get shareable link** — the link will be inserted into the message automatically.")
+
+            st.text_area("Message preview", value=wa_message, height=250, disabled=True)
+
+            if _file_url:
                 st.caption("✅ PDF link is already in the message. Tap the button below to open WhatsApp and send.")
 
             encoded_msg = urllib.parse.quote(wa_message)
