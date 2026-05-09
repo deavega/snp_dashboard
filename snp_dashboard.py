@@ -2798,12 +2798,12 @@ if f_macro:
 
                             if _upload_url:
                                 st.session_state["_wa_file_url"] = _upload_url
-                                st.success("Uploaded! Shareable link is ready — see below.")
+                                st.success("✅ PDF link auto-inserted into the WhatsApp message below — just hit Send!")
                             else:
                                 st.error("Both upload services failed. Check your internet connection, or download the PDF and attach it manually in WhatsApp.")
 
                     if st.session_state["_wa_file_url"]:
-                        st.info(f"🔗 Shareable link: {st.session_state['_wa_file_url']}")
+                        st.info("📎 PDF link already included in the WhatsApp message below. Scroll down and tap **Open WhatsApp & Send**.")
 
             with dl2:
                 st.markdown("### 📊 PowerPoint Deck")
@@ -2897,7 +2897,9 @@ if f_macro:
             st.text_area("Message preview", value=wa_message, height=250, disabled=True)
 
             if not _file_url:
-                st.caption("💡 Generate the PDF and click **Upload & get shareable link** above to automatically include the PDF link in this message.")
+                st.caption("💡 No PDF link yet — click **Upload & get shareable link** above and it will appear here automatically.")
+            else:
+                st.caption("✅ PDF link is already in the message. Tap the button below to open WhatsApp and send.")
 
             encoded_msg = urllib.parse.quote(wa_message)
             phone_clean = wa_phone.strip().replace(" ", "").replace("-", "")
