@@ -2713,6 +2713,12 @@ if f_macro:
                 "https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/10221157"
             )
 
+            # ── Session state: persist PDF bytes and file.io link per target ──
+            if st.session_state.get("_briefing_target") != target:
+                st.session_state["_briefing_target"] = target
+                st.session_state["_pdf_bytes"] = None
+                st.session_state["_wa_file_url"] = None
+
             # ── Download buttons ──────────────────────────────────────────────
             dl1, dl2 = st.columns(2)
 
@@ -2739,14 +2745,42 @@ if f_macro:
                             cap_note=cap_note,
                             df_master=df,
                         )
-                    
+                    st.session_state["_pdf_bytes"] = pdf_buf.getvalue()
+                    st.session_state["_wa_file_url"] = None  # reset old link
+
+                if st.session_state["_pdf_bytes"] is not None:
                     st.download_button(
                         label="⬇️ Download PDF",
-                        data=pdf_buf,
+                        data=st.session_state["_pdf_bytes"],
                         file_name=f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                     )
+                    if st.button("📤 Upload & get shareable link", use_container_width=True,
+                                 help="Uploads the PDF to file.io (free, link expires in 24h) so you can share it via WhatsApp below."):
+                        with st.spinner("Uploading PDF…"):
+                            try:
+                                resp = requests.post(
+                                    "https://file.io",
+                                    files={"file": (
+                                        f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf",
+                                        st.session_state["_pdf_bytes"],
+                                        "application/pdf",
+                                    )},
+                                    data={"expires": "1d"},
+                                    timeout=30,
+                                )
+                                result = resp.json()
+                                if resp.ok and result.get("success"):
+                                    st.session_state["_wa_file_url"] = result["link"]
+                                    st.success(f"Uploaded! Link expires in 24 hours.")
+                                else:
+                                    st.error("Upload failed — file.io returned an error. Try downloading manually.")
+                            except Exception as e:
+                                st.error(f"Upload error: {e}")
+
+                    if st.session_state["_wa_file_url"]:
+                        st.info(f"🔗 Shareable link: {st.session_state['_wa_file_url']}")
 
             with dl2:
                 st.markdown("### 📊 PowerPoint Deck")
@@ -2782,7 +2816,6 @@ if f_macro:
             # ── WhatsApp Share ────────────────────────────────────────────────
             st.markdown("---")
             st.markdown("### 📲 Share via WhatsApp")
-            st.markdown("Send a rating summary message via WhatsApp. Download the PDF/PPTX above first, then attach it in WhatsApp.")
 
             wa_col1, wa_col2 = st.columns([2, 1])
             with wa_col1:
@@ -2794,10 +2827,13 @@ if f_macro:
             with wa_col2:
                 wa_lang = st.selectbox("Message language", ["English", "Indonesian"], index=0)
 
-            def _build_wa_message(lang):
+            _file_url = st.session_state.get("_wa_file_url")
+
+            def _build_wa_message(lang, file_url=None):
                 date_str = now_jakarta().strftime("%d %b %Y")
                 qo_sign  = f"+{int(qo)}" if qo > 0 else str(int(qo))
                 adj_sign = f"+{int(supp_adj)}" if supp_adj > 0 else str(int(supp_adj))
+                link_line = f"\n📎 *PDF Report:* {file_url}" if file_url else ""
                 if lang == "Indonesian":
                     msg = (
                         f"*📊 Briefing Note Sovereign Rating — {target}*\n"
@@ -2812,8 +2848,8 @@ if f_macro:
                         f"  • Fiskal: {s_fis:.1f}\n"
                         f"  • Eksternal: {s_ext:.1f}\n"
                         f"  • Moneter: {s_mon:.1f}\n\n"
-                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}\n\n"
-                        f"_Laporan lengkap terlampir._"
+                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}"
+                        f"{link_line}"
                     )
                 else:
                     msg = (
@@ -2829,13 +2865,16 @@ if f_macro:
                         f"  • Fiscal: {s_fis:.1f}\n"
                         f"  • External: {s_ext:.1f}\n"
                         f"  • Monetary: {s_mon:.1f}\n\n"
-                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}\n\n"
-                        f"_Full report attached._"
+                        f"  IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}"
+                        f"{link_line}"
                     )
                 return msg
 
-            wa_message = _build_wa_message(wa_lang)
-            st.text_area("Message preview", value=wa_message, height=230, disabled=True)
+            wa_message = _build_wa_message(wa_lang, _file_url)
+            st.text_area("Message preview", value=wa_message, height=250, disabled=True)
+
+            if not _file_url:
+                st.caption("💡 Generate the PDF and click **Upload & get shareable link** above to automatically include the PDF link in this message.")
 
             encoded_msg = urllib.parse.quote(wa_message)
             phone_clean = wa_phone.strip().replace(" ", "").replace("-", "")
@@ -2849,7 +2888,7 @@ if f_macro:
                 url=wa_url,
                 use_container_width=True,
             )
-            st.caption("This will open WhatsApp Web or the WhatsApp app with the message pre-filled. Attach the downloaded PDF or PPTX file before sending.")
+            st.caption("Opens WhatsApp Web or the app with the message pre-filled. The recipient taps the PDF link inside the message to download it.")
 
         with tabs[4]: # METHODOLOGY SIMULATOR (GAUGE STYLE)
             st.subheader("Interactive Stress-Test Simulator")
