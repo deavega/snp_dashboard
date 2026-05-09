@@ -2757,27 +2757,50 @@ if f_macro:
                         use_container_width=True,
                     )
                     if st.button("📤 Upload & get shareable link", use_container_width=True,
-                                 help="Uploads the PDF to file.io (free, link expires in 24h) so you can share it via WhatsApp below."):
+                                 help="Uploads the PDF to a temporary public link so you can share it via WhatsApp below."):
                         with st.spinner("Uploading PDF…"):
+                            _fname = f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf"
+                            _pdf  = st.session_state["_pdf_bytes"]
+                            _upload_url = None
+
+                            # Primary: tmpfiles.org (reliable, no auth, expires 1 h)
                             try:
-                                resp = requests.post(
-                                    "https://file.io",
-                                    files={"file": (
-                                        f"Briefing_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf",
-                                        st.session_state["_pdf_bytes"],
-                                        "application/pdf",
-                                    )},
-                                    data={"expires": "1d"},
+                                r1 = requests.post(
+                                    "https://tmpfiles.org/api/v1/upload",
+                                    files={"file": (_fname, _pdf, "application/pdf")},
                                     timeout=30,
                                 )
-                                result = resp.json()
-                                if resp.ok and result.get("success"):
-                                    st.session_state["_wa_file_url"] = result["link"]
-                                    st.success(f"Uploaded! Link expires in 24 hours.")
-                                else:
-                                    st.error("Upload failed — file.io returned an error. Try downloading manually.")
-                            except Exception as e:
-                                st.error(f"Upload error: {e}")
+                                if r1.ok and r1.text:
+                                    j1 = r1.json()
+                                    if j1.get("status") == "success":
+                                        # convert view URL → direct download URL
+                                        _upload_url = j1["data"]["url"].replace(
+                                            "tmpfiles.org/", "tmpfiles.org/dl/"
+                                        )
+                            except Exception:
+                                pass
+
+                            # Fallback: file.io (expires 1 day)
+                            if not _upload_url:
+                                try:
+                                    r2 = requests.post(
+                                        "https://file.io",
+                                        files={"file": (_fname, _pdf, "application/pdf")},
+                                        data={"expires": "1d"},
+                                        timeout=30,
+                                    )
+                                    if r2.ok and r2.text:
+                                        j2 = r2.json()
+                                        if j2.get("success"):
+                                            _upload_url = j2["link"]
+                                except Exception:
+                                    pass
+
+                            if _upload_url:
+                                st.session_state["_wa_file_url"] = _upload_url
+                                st.success("Uploaded! Shareable link is ready — see below.")
+                            else:
+                                st.error("Both upload services failed. Check your internet connection, or download the PDF and attach it manually in WhatsApp.")
 
                     if st.session_state["_wa_file_url"]:
                         st.info(f"🔗 Shareable link: {st.session_state['_wa_file_url']}")
