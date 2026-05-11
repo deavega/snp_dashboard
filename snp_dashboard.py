@@ -684,17 +684,85 @@ if f_macro:
                 f_macro.seek(0)                  # reset for any subsequent reads
             trend_df = extract_trend_data(xls_bytes)
 
+        # ── Methodology-aligned averaging helpers (used by all tabs) ──────────
+        def get_avg(country, metric, tdf, n_years=3):
+            """Estimate-year + n_years average (e.g. fiscal balance, GEFN)."""
+            try:
+                sub = tdf[(tdf['Country'] == country) & (tdf['Metric'] == metric)].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f',''))
+                    if str(y).strip().endswith(('e','f')) or str(y).strip().isdigit() else 0)
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                anchor = sub[sub['_type']=='e']['_n'].max()
+                if np.isnan(anchor): return np.nan
+                window = sub[sub['_n'].between(anchor, anchor + n_years - 1)]
+                return round(window['Value'].mean(), 2) if not window.empty else np.nan
+            except: return np.nan
+
+        def get_10yr_trend_growth(country, metric, tdf):
+            """10-year weighted average per S&P para. 36 (6 hist + 1 est + 3 fcst)."""
+            try:
+                sub = tdf[(tdf['Country'] == country) & (tdf['Metric'] == metric)].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f','')))
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                sub = sub.sort_values('_n').tail(10)
+                est_yr = sub[sub['_type']=='e']['_n'].max() if not sub[sub['_type']=='e'].empty else sub['_n'].max()
+                sub['_w'] = sub['_n'].apply(lambda n: 1.0 if n >= est_yr - 1 else 0.5)
+                wavg = (sub['Value'] * sub['_w']).sum() / sub['_w'].sum()
+                return round(wavg, 2)
+            except: return np.nan
+
+        def get_cycle_avg(country, metric, tdf, n=5):
+            """5-year cycle average for inflation (hist + estimate only)."""
+            try:
+                sub = tdf[(tdf['Country'] == country) & (tdf['Metric'] == metric)].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f','')))
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                hist_est = sub[sub['_type'].isin(['h','e'])].sort_values('_n').tail(n)
+                return round(hist_est['Value'].mean(), 2) if not hist_est.empty else np.nan
+            except: return np.nan
+
+        def _method_inputs(country, row, tdf):
+            """Return methodology-aligned score inputs for a given country/row."""
+            _td = tdf if tdf is not None and not tdf.empty else None
+            growth = (get_10yr_trend_growth(country, 'Real GDP growth (%)', _td)
+                      if _td is not None else np.nan)
+            balance = (get_avg(country, 'GG balance/GDP (%)', _td, n_years=3)
+                       if _td is not None else np.nan)
+            gefn   = (get_avg(country, 'Gross ext. fin. needs/(CAR + use. res.) (%)', _td, n_years=3)
+                      if _td is not None else np.nan)
+            cpi    = (get_cycle_avg(country, 'CPI growth (%)', _td, n=5)
+                      if _td is not None else np.nan)
+            return {
+                'growth':  growth  if not np.isnan(growth)  else float(row['Growth']),
+                'balance': balance if not np.isnan(balance) else float(row['Balance']),
+                'gefn':    gefn    if not np.isnan(gefn)    else float(row['GEFN']),
+                'cpi':     cpi     if not np.isnan(cpi)     else float(row['CPI']),
+            }
+
         with tabs[0]: # NATION ANALYSIS & OVERLAY
             target = st.selectbox("Select Sovereign Target", df['Country'].unique(), 
                                    index=list(df['Country']).index('Indonesia') if 'Indonesia' in df['Country'].values else 0)
             r = df[df['Country'] == target].iloc[0]
             
-            # Kalkulasi Skor pilar berdasarkan logika terkalibrasi di Chunk 1
+            # Methodology-aligned inputs (growth=10yr avg, balance/GEFN=3yr avg, CPI=5yr avg)
+            _mi = _method_inputs(target, r, trend_df)
             s_inst = max(1.0, min(6.0, 6 - (float(r['WGI_Score']) / 20))) if pd.notna(r['WGI_Score']) else 3.5
-            s_eco = score_economic(r['GDP_PC'], r['Growth'], "Standard")
-            s_fis, s_fis_perf, s_fis_burd = score_fiscal(r['Debt_GDP'], r['Int_Rev'], r['Balance'], "Neutral")
-            s_ext, s_liq, s_debt_pos = score_external(r['GEFN'], r['NIIP_CAR'], 20, r['Reserves'])
-            s_mon = score_monetary("Floating", "High", r['CPI'], r['Fin_Depth'])
+            s_eco = score_economic(r['GDP_PC'], _mi['growth'], "Standard")
+            s_fis, s_fis_perf, s_fis_burd = score_fiscal(r['Debt_GDP'], r['Int_Rev'], _mi['balance'], "Neutral")
+            s_ext, s_liq, s_debt_pos = score_external(_mi['gefn'], r['NIIP_CAR'], 20, r['Reserves'])
+            s_mon = score_monetary("Floating", "High", _mi['cpi'], r['Fin_Depth'])
 
             # Calculate metrix scores and initial SRM rating
             prof_ie = (s_inst + s_eco) / 2
@@ -1223,12 +1291,13 @@ if f_macro:
             # ── Build pillar scores ──────────────────────────────────────
             comp_list = []
             for n in sel_nations:
-                nr = df[df['Country'] == n].iloc[0]
+                nr    = df[df['Country'] == n].iloc[0]
+                _mi_n = _method_inputs(n, nr, trend_df)
                 s_inst_n = max(1.0, min(6.0, 6 - (float(nr['WGI_Score'])/20))) if pd.notna(nr['WGI_Score']) else 3.5
-                s_eco_n  = score_economic(nr['GDP_PC'], nr['Growth'], "Standard")
-                s_fis_n  = score_fiscal(nr['Debt_GDP'], nr['Int_Rev'], nr['Balance'], "Neutral")[0]
-                s_ext_n  = score_external(nr['GEFN'], nr['NIIP_CAR'], 20, nr['Reserves'])[0]
-                s_mon_n  = score_monetary("Floating", "High", nr['CPI'], nr['Fin_Depth'])
+                s_eco_n  = score_economic(nr['GDP_PC'], _mi_n['growth'], "Standard")
+                s_fis_n  = score_fiscal(nr['Debt_GDP'], nr['Int_Rev'], _mi_n['balance'], "Neutral")[0]
+                s_ext_n  = score_external(_mi_n['gefn'], nr['NIIP_CAR'], 20, nr['Reserves'])[0]
+                s_mon_n  = score_monetary("Floating", "High", _mi_n['cpi'], nr['Fin_Depth'])
                 ie_n     = (s_inst_n + s_eco_n) / 2
                 fp_n     = (s_fis_n + s_ext_n + s_mon_n) / 3
                 srm_n    = get_indicative_rating(ie_n, fp_n)
@@ -2912,110 +2981,16 @@ if f_macro:
             )
             st.caption("Opens WhatsApp Web or the app with the message pre-filled. The recipient taps the PDF link inside the message to download it.")
 
-        # ── Compute methodology-aligned defaults from trend_df ────────────────
-        def get_avg(country, metric, trend_df, yr_start_type='e', n_years=3):
-            """Average from estimate year + n forecast years."""
-            try:
-                sub = trend_df[
-                    (trend_df['Country'] == country) &
-                    (trend_df['Metric'] == metric)
-                ].copy()
-                if sub.empty: return np.nan
-                sub['_n'] = sub['Year'].apply(
-                    lambda y: float(str(y).replace('e','').replace('f',''))
-                    if str(y).strip().endswith(('e','f')) or str(y).strip().isdigit()
-                    else 0)
-                sub['_type'] = sub['Year'].apply(
-                    lambda y: 'e' if str(y).strip().endswith('e')
-                    else ('f' if str(y).strip().endswith('f') else 'h'))
-                est = sub[sub['_type']=='e']
-                if est.empty: return np.nan
-                anchor = est['_n'].max()
-                window = sub[sub['_n'].between(anchor, anchor + n_years - 1)]
-                return round(window['Value'].mean(), 2) if not window.empty else np.nan
-            except:
-                return np.nan
-
-        def get_10yr_trend_growth(country, metric, trend_df):
-            """
-            10-year weighted average per S&P para. 36:
-            6 historical + 1 estimate + 3 forecast.
-            Latest year, estimate, and forecasts weighted 100%;
-            earlier years weighted lower.
-            """
-            try:
-                sub = trend_df[
-                    (trend_df['Country'] == country) &
-                    (trend_df['Metric'] == metric)
-                ].copy()
-                if sub.empty: return np.nan
-                sub['_n'] = sub['Year'].apply(
-                    lambda y: float(str(y).replace('e','').replace('f','')))
-                sub['_type'] = sub['Year'].apply(
-                    lambda y: 'e' if str(y).strip().endswith('e')
-                    else ('f' if str(y).strip().endswith('f') else 'h'))
-                sub = sub.sort_values('_n').tail(10)
-
-                # S&P: latest hist, estimate, forecasts = weight 1.0; earlier = weight 0.5
-                est_yr = sub[sub['_type']=='e']['_n'].max() if not sub[sub['_type']=='e'].empty else sub['_n'].max()
-                sub['_w'] = sub['_n'].apply(lambda n: 1.0 if n >= est_yr - 1 else 0.5)
-                wavg = (sub['Value'] * sub['_w']).sum() / sub['_w'].sum()
-                return round(wavg, 2)
-            except:
-                return np.nan
-
-        def get_cycle_avg(country, metric, trend_df, n=5):
-            """Multi-year cycle average for inflation — use 5-year average."""
-            try:
-                sub = trend_df[
-                    (trend_df['Country'] == country) &
-                    (trend_df['Metric'] == metric)
-                ].copy()
-                if sub.empty: return np.nan
-                sub['_n'] = sub['Year'].apply(
-                    lambda y: float(str(y).replace('e','').replace('f','')))
-                sub['_type'] = sub['Year'].apply(
-                    lambda y: 'e' if str(y).strip().endswith('e')
-                    else ('f' if str(y).strip().endswith('f') else 'h'))
-                # Use historical + estimate only (not forecast) for inflation cycle
-                hist_est = sub[sub['_type'].isin(['h','e'])].sort_values('_n').tail(n)
-                return round(hist_est['Value'].mean(), 2) if not hist_est.empty else np.nan
-            except:
-                return np.nan
-
-        # ── Apply per S&P methodology ─────────────────────────────────────────
-        _td = trend_df if trend_df is not None and not trend_df.empty else None
-
-        # GDP per capita — current year estimate only (already in r['GDP_PC'])
-        sim_gdp_default = float(r['GDP_PC'])
-
-        # Real GDP growth — 10-year weighted trend (para. 36)
-        _g10 = get_10yr_trend_growth(target, 'Real GDP growth (%)', _td) if _td is not None else np.nan
-        sim_growth_default = _g10 if not np.isnan(_g10) else float(r['Growth'])
-
-        # Fiscal balance — average current estimate + 2 forecast years (para. 73)
-        _bal = get_avg(target, 'GG balance/GDP (%)', _td, n_years=3) if _td is not None else np.nan
-        sim_bal_default = _bal if not np.isnan(_bal) else float(r['Balance'])
-
-        # Net debt/GDP — current year estimate (burden assessment uses current level)
-        sim_debt_default = float(r['Debt_GDP'])
-
-        # Interest/Revenue — current year estimate
-        sim_int_default = float(r['Int_Rev'])
-
-        # GEFN — average current estimate + 2 forecast years (para. 54)
-        _gefn = get_avg(target, 'Gross ext. fin. needs/(CAR + use. res.) (%)', _td, n_years=3) if _td is not None else np.nan
-        sim_gefn_default = _gefn if not np.isnan(_gefn) else float(r['GEFN'])
-
-        # NIIP — current year estimate
-        sim_niip_default = float(r['NIIP_CAR'])
-
-        # Inflation — 5-year cycle average (para. 115-117)
-        _cpi = get_cycle_avg(target, 'CPI growth (%)', _td, n=5) if _td is not None else np.nan
-        sim_cpi_default = _cpi if not np.isnan(_cpi) else float(r['CPI'])
-
-        # Financial depth — current year estimate
-        sim_depth_default = int(r['Fin_Depth'])
+        # ── Methodology-aligned simulator defaults (reuse _mi computed in tabs[0]) ──
+        sim_gdp_default     = float(r['GDP_PC'])
+        sim_growth_default  = _mi['growth']
+        sim_bal_default     = _mi['balance']
+        sim_debt_default    = float(r['Debt_GDP'])
+        sim_int_default     = float(r['Int_Rev'])
+        sim_gefn_default    = _mi['gefn']
+        sim_niip_default    = float(r['NIIP_CAR'])
+        sim_cpi_default     = _mi['cpi']
+        sim_depth_default   = int(r['Fin_Depth'])
 
         # Reserves — current year estimate
         sim_reserves_default = float(r['Reserves'])
