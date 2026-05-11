@@ -3241,5 +3241,67 @@ if f_macro:
                     """, unsafe_allow_html=True)
             else:
                 st.success("✅ No supplemental adjustment factors triggered.")
+
+            # ── Stress-Test PDF Report ────────────────────────────────────────
+            st.divider()
+            st.markdown("### 📑 Export Stress-Test Report")
+            st.markdown(
+                "Generate a PDF briefing note using the **simulated inputs above** "
+                "instead of the actual baseline data."
+            )
+
+            # Show a diff summary so user knows what changed vs baseline
+            deltas = []
+            if abs(p_inst_sim - s_inst) >= 0.1: deltas.append(f"Institutional {s_inst:.1f}→{p_inst_sim:.1f}")
+            if abs(p_eco_sim  - s_eco)  >= 0.1: deltas.append(f"Economic {s_eco:.1f}→{p_eco_sim:.1f}")
+            if abs(p_fis_sim  - s_fis)  >= 0.1: deltas.append(f"Fiscal {s_fis:.1f}→{p_fis_sim:.1f}")
+            if abs(p_ext_sim  - s_ext)  >= 0.1: deltas.append(f"External {s_ext:.1f}→{p_ext_sim:.1f}")
+            if abs(p_mon_sim  - s_mon)  >= 0.1: deltas.append(f"Monetary {s_mon:.1f}→{p_mon_sim:.1f}")
+            if deltas:
+                st.caption(f"📊 Score changes vs baseline: {' | '.join(deltas)}")
+            else:
+                st.caption("📊 No pillar score changes vs baseline — adjust inputs above to create a stress scenario.")
+
+            if st.button("⚙️ Generate Stress-Test PDF", use_container_width=True):
+                with st.spinner("Generating stress-test PDF..."):
+                    _sim_qo = RATING_TO_NUM.get(r['Actual_Rating'], 8) - RATING_TO_NUM.get(sim_final, 8)
+                    _stress_buf = generate_pdf(
+                        target=target, r=r,
+                        srm_rating=sim_rating, qo=_sim_qo,
+                        s_inst=p_inst_sim, s_eco=p_eco_sim,
+                        s_fis=p_fis_sim, s_ext=p_ext_sim, s_mon=p_mon_sim,
+                        prof_ie=res_ie, prof_fp=res_fp,
+                        comp_list=briefing_comp_list,
+                        sel_nations=briefing_nations,
+                        trend_df=trend_df,
+                        selected_metrics=briefing_metrics,
+                        signals=signals,
+                        qo_opportunities=qo_opportunities,
+                        supp_adj=sim_supp_adj,
+                        supp_factors=sim_supp_factors,
+                        final_indicative=sim_final,
+                        cap_note=sim_cap or "",
+                        df_master=df,
+                    )
+                st.session_state["_stress_pdf_bytes"] = _stress_buf.getvalue()
+                st.session_state["_stress_pdf_scenario"] = (
+                    f"{target} | SRM: {sim_rating}"
+                    + (f" → {sim_final} (after supp.)" if sim_supp_adj != 0 else "")
+                )
+                st.success("✅ Stress-test PDF ready — click below to download.")
+
+            if st.session_state.get("_stress_pdf_bytes"):
+                st.download_button(
+                    label="⬇️ Download Stress-Test PDF",
+                    data=st.session_state["_stress_pdf_bytes"],
+                    file_name=f"StressTest_{target}_{now_jakarta().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+                st.caption(
+                    f"📄 Scenario captured: {st.session_state.get('_stress_pdf_scenario', '')}. "
+                    "Regenerate if you change inputs above."
+                )
+
 else:
     st.info("👋 Welcome! Please upload the S&P Macro dataset to begin. Reference WGI data will be loaded automatically from the cloud.")
