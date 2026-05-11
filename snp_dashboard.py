@@ -2176,17 +2176,17 @@ if f_macro:
                     "impact": "+1 notch potential"
                 })
 
-            if r['Reserves'] > 6 and r['GEFN'] < 75:
+            if r['Reserves'] > 6 and _mi['gefn'] < 75:
                 qo_opportunities.append({
                     "factor": "External Liquidity & IIP",
-                    "argument": f"Reserve coverage of {r['Reserves']:.1f} months exceeds S&P's 6-month adequacy threshold while GEFN of {r['GEFN']:.1f}% remains manageable. This combination demonstrates resilience beyond what quantitative metrics alone capture.",
+                    "argument": f"Reserve coverage of {r['Reserves']:.1f} months exceeds S&P's 6-month adequacy threshold while GEFN of {_mi['gefn']:.1f}% (3-yr avg) remains manageable. This combination demonstrates resilience beyond what quantitative metrics alone capture.",
                     "impact": "+1 notch potential"
                 })
 
-            if r['CPI'] <= 3 and r['Fin_Depth'] > 40:
+            if _mi['cpi'] <= 3 and r['Fin_Depth'] > 40:
                 qo_opportunities.append({
                     "factor": "Monetary Flexibility",
-                    "argument": f"Inflation at {r['CPI']:.1f}% within target band combined with financial depth of {r['Fin_Depth']:.1f}% GDP demonstrates effective monetary transmission and central bank credibility beyond peer average.",
+                    "argument": f"Inflation at {_mi['cpi']:.1f}% (5-yr avg) within target band combined with financial depth of {r['Fin_Depth']:.1f}% GDP demonstrates effective monetary transmission and central bank credibility beyond peer average.",
                     "impact": "+1 notch potential"
                 })
 
@@ -2197,10 +2197,10 @@ if f_macro:
                     "impact": "Mitigate negative QO"
                 })
 
-            if r['Growth'] > 4 and r['Debt_GDP'] < 60:
+            if _mi['growth'] > 4 and r['Debt_GDP'] < 60:
                 qo_opportunities.append({
                     "factor": "Contingent Liabilities",
-                    "argument": f"Strong GDP growth ({r['Growth']:.1f}%) combined with contained debt ({r['Debt_GDP']:.1f}% GDP) reduces the probability of contingent liability crystallization — SOE/GRE distress is less likely in a high-growth environment.",
+                    "argument": f"Strong GDP growth ({_mi['growth']:.1f}%, 10-yr avg) combined with contained debt ({r['Debt_GDP']:.1f}% GDP) reduces the probability of contingent liability crystallization — SOE/GRE distress is less likely in a high-growth environment.",
                     "impact": "Mitigate negative QO"
                 })
 
@@ -2341,13 +2341,13 @@ if f_macro:
 
             # Extract 2025e values from trend_df for peer comparison
             PEER_METRICS = {
-                'Real GDP Growth (%)':      ('growth',   True,   "Real GDP growth (%)"),
-                'Fiscal Balance (% GDP)':   ('balance',  True,   "GG balance/GDP (%)"),
+                'Real GDP Growth (%)':      ('growth',   True,   "Real GDP growth (%)"),     # overridden to 10-yr avg
+                'Fiscal Balance (% GDP)':   ('balance',  True,   "GG balance/GDP (%)"),      # overridden to 3-yr avg
                 'Debt-to-GDP (%)':          ('debt',     False,  "Net GG debt/GDP (%)"),
                 'Interest/Revenue (%)':     ('int_rev',  False,  "GG interest expenditure/revenues (%)"),
-                'GEFN (% CAR)':             ('gefn',     False,  "Gross ext. fin. needs/(CAR + use. res.) (%)"),
+                'GEFN (% CAR)':             ('gefn',     False,  "Gross ext. fin. needs/(CAR + use. res.) (%)"),  # overridden to 3-yr avg
                 'Reserves (months)':        ('reserves', True,   "Usable reserves/CAPs (months)"),
-                'CPI Inflation (%)':        ('cpi',      False,  "CPI growth (%)"),
+                'CPI Inflation (%)':        ('cpi',      False,  "CPI growth (%)"),           # overridden to 5-yr avg
                 'Financial Depth (% GDP)':  ('findep',   True,   "Banks' claims on resident non-gov't sector/GDP"),
             }
 
@@ -2382,8 +2382,22 @@ if f_macro:
                 peer_avgs[label] = np.nanmean(peer_vals) if peer_vals else np.nan
                 target_vals[label] = get_latest_est(target, raw_metric)
 
+            # Override S&P-scored metrics with methodology-aligned averages (consistent with scoring)
+            _qo_mi_map = {
+                'Real GDP Growth (%)':    ('growth',  lambda pc: get_10yr_trend_growth(pc, 'Real GDP growth (%)', trend_df)),
+                'Fiscal Balance (% GDP)': ('balance', lambda pc: get_avg(pc, 'GG balance/GDP (%)', trend_df, 3)),
+                'GEFN (% CAR)':           ('gefn',    lambda pc: get_avg(pc, 'Gross ext. fin. needs/(CAR + use. res.) (%)', trend_df, 3)),
+                'CPI Inflation (%)':      ('cpi',     lambda pc: get_cycle_avg(pc, 'CPI growth (%)', trend_df, 5)),
+            }
+            for _lbl, (_mk, _fn) in _qo_mi_map.items():
+                if not np.isnan(_mi[_mk]):
+                    target_vals[_lbl] = _mi[_mk]
+                _p_vals = [_v for pc in peer_countries if not np.isnan(_v := _fn(pc))]
+                if _p_vals:
+                    peer_avgs[_lbl] = float(np.nanmean(_p_vals))
+
             # ── Peer comparison table ─────────────────────────────────────────
-            st.markdown(f"#### 📊 Performance vs BBB Peer Average ({len(peer_countries)} peers, 2025e)")
+            st.markdown(f"#### 📊 Performance vs BBB Peer Average ({len(peer_countries)} peers, 2025e · scored metrics on S&P methodology averages)")
 
             if peer_countries:
                 comp_rows = []
@@ -2471,15 +2485,15 @@ if f_macro:
 
                 QO_NARRATIVE_TEMPLATE = {
                     'Real GDP Growth (%)': (
-                        "Growth of {t_val:.1f}% vs BBB peer average of {p_avg:.1f}% — "
+                        "Trend growth of {t_val:.1f}% (10-yr S&P weighted avg) vs BBB peer average of {p_avg:.1f}% — "
                         "outperformance of {diff:+.1f}pp. S&P para. 15 explicitly recognises "
                         "sustained over-performance vs similarly rated peers as a basis for "
-                        "positive residual adjustment. Highlight multi-year trend growth "
-                        "trajectory, not just the current-year estimate."
+                        "positive residual adjustment. Both figures use S&P's 10-yr weighted average "
+                        "(6 hist + 1 est + 3 fcst) for an apples-to-apples comparison."
                     ),
                     'Fiscal Balance (% GDP)': (
-                        "Fiscal balance of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
-                        "{diff:+.1f}pp advantage. A tighter deficit demonstrates greater "
+                        "Fiscal balance of {t_val:.1f}% (3-yr avg) vs peer average of {p_avg:.1f}% — "
+                        "{diff:+.1f}pp advantage. A tighter structural deficit demonstrates greater "
                         "fiscal discipline than the BBB cohort and supports the argument for "
                         "fiscal flexibility under the QO Fiscal Flexibility factor."
                     ),
@@ -2496,10 +2510,10 @@ if f_macro:
                         "Flexibility argument in the QO dialogue."
                     ),
                     'GEFN (% CAR)': (
-                        "GEFN of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "GEFN of {t_val:.1f}% (3-yr avg) vs peer average of {p_avg:.1f}% — "
                         "{diff:+.1f}pp lower external rollover need. Demonstrates superior "
-                        "external liquidity management relative to the BBB cohort. Use as "
-                        "an External Liquidity & IIP positive argument."
+                        "external liquidity management relative to the BBB cohort. Both figures "
+                        "use S&P's 3-yr average basis for an apples-to-apples comparison."
                     ),
                     'Reserves (months)': (
                         "Reserve coverage of {t_val:.1f} months vs peer average of {p_avg:.1f} months. "
@@ -2507,10 +2521,10 @@ if f_macro:
                         "and supports the External Liquidity & IIP QO factor."
                     ),
                     'CPI Inflation (%)': (
-                        "Inflation of {t_val:.1f}% vs peer average of {p_avg:.1f}% — "
+                        "Inflation of {t_val:.1f}% (5-yr cycle avg) vs peer average of {p_avg:.1f}% — "
                         "{diff:+.1f}pp lower. Price stability closer to trading partner levels "
                         "supports monetary credibility arguments under the Monetary Flexibility "
-                        "QO factor. Emphasise central bank independence and track record."
+                        "QO factor. Both figures use S&P's 5-yr cycle average basis."
                     ),
                     'Financial Depth (% GDP)': (
                         "Financial depth of {t_val:.1f}% of GDP vs peer average of {p_avg:.1f}% — "
