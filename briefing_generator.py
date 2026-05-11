@@ -359,20 +359,22 @@ def generate_pdf(target, r, srm_rating, qo,
                  comp_list, sel_nations, trend_df, selected_metrics,
                  signals, qo_opportunities,
                  supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None,
-                 df_master=None):    
-    supp_factors     = supp_factors or []
-    final_indicative = final_indicative or srm_rating
+                 df_master=None,
+                 stress_test=False, baseline_scores=None):
     """
     Returns a bytes buffer containing the PDF briefing note.
+    When stress_test=True, baseline_scores should be a dict with keys:
+    s_inst, s_eco, s_fis, s_ext, s_mon, srm_rating, final_indicative.
     """
     supp_factors     = supp_factors or []
     final_indicative = final_indicative or srm_rating
     buf = io.BytesIO()
+    _title = f"Stress-Test Scenario — {target}" if stress_test else f"Sovereign Rating Briefing — {target}"
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=1.8*cm, rightMargin=1.8*cm,
         topMargin=2*cm, bottomMargin=2*cm,
-        title=f"Sovereign Rating Briefing — {target}"
+        title=_title
     )
 
     # ── Styles ────────────────────────────────────────────────────────────────
@@ -397,13 +399,85 @@ def generate_pdf(target, r, srm_rating, qo,
     def vsp(h=6): return Spacer(1, h)
 
     # ── COVER / HEADER ────────────────────────────────────────────────────────
-    story.append(Paragraph(f"Sovereign Credit Rating Briefing", st_h1))
-    story.append(Paragraph(f"<b>{target}</b> | S&amp;P Methodology Analysis", st_h2))
-    story.append(Paragraph(
-        f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
-        f"Based on S&amp;P Global Rating Criteria",
-        st_small))
-    story.append(hr())
+    if stress_test:
+        story.append(Paragraph("⚠️ Stress-Test Scenario Report", st_h1))
+        story.append(Paragraph(f"<b>{target}</b> | Simulated Rating Analysis", st_h2))
+        story.append(Paragraph(
+            f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
+            f"This report reflects <b>hypothetical inputs</b>, not the baseline actual data.",
+            st_small))
+        story.append(hr())
+
+        # Stress-test disclaimer banner
+        disclaimer_data = [[
+            Paragraph(
+                "⚠️  <b>STRESS-TEST SCENARIO — NOT AN OFFICIAL RATING</b><br/>"
+                "<font size='8'>The pillar scores, profiles, and indicative ratings in this report "
+                "are derived from user-defined hypothetical inputs. They do not represent "
+                "S&amp;P's actual assessment of the sovereign.</font>",
+                S("Disc", fontSize=9, textColor=colors.HexColor("#7c2d12"),
+                  fontName="Helvetica", leading=13)
+            )
+        ]]
+        disclaimer_tbl = Table(disclaimer_data, colWidths=[17*cm])
+        disclaimer_tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor("#fff7ed")),
+            ('BOX',           (0,0), (-1,-1), 1.2, colors.HexColor("#f97316")),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+            ('TOPPADDING',    (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(disclaimer_tbl)
+        story.append(vsp(10))
+
+        # Baseline vs scenario comparison table (if baseline provided)
+        if baseline_scores:
+            story.append(Paragraph("Baseline vs. Stress-Test Scenario", st_h3))
+            bs = baseline_scores
+            def _delta(base, sim):
+                d = sim - base
+                arrow = "▲" if d < 0 else ("▼" if d > 0 else "–")
+                color = "#065f46" if d < 0 else ("#991b1b" if d > 0 else "#64748B")
+                sign  = f"{d:+.1f}" if d != 0 else "–"
+                return Paragraph(
+                    f"<font color='{color}'><b>{arrow} {sign}</b></font>",
+                    S("Dlt", fontSize=9, alignment=TA_CENTER)
+                )
+
+            cmp_data = [
+                ["Pillar", "Baseline", "Simulated", "Change"],
+                ["🏛 Institutional", f"{bs['s_inst']:.1f}", f"{s_inst:.1f}", _delta(bs['s_inst'], s_inst)],
+                ["📈 Economic",      f"{bs['s_eco']:.1f}",  f"{s_eco:.1f}",  _delta(bs['s_eco'],  s_eco)],
+                ["💰 Fiscal",        f"{bs['s_fis']:.1f}",  f"{s_fis:.1f}",  _delta(bs['s_fis'],  s_fis)],
+                ["🌐 External",      f"{bs['s_ext']:.1f}",  f"{s_ext:.1f}",  _delta(bs['s_ext'],  s_ext)],
+                ["🏦 Monetary",      f"{bs['s_mon']:.1f}",  f"{s_mon:.1f}",  _delta(bs['s_mon'],  s_mon)],
+                ["SRM Rating",      bs['srm_rating'],       srm_rating,      ""],
+                ["Final Rating",    bs['final_indicative'], final_indicative, ""],
+            ]
+            cmp_style = TableStyle([
+                ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
+                ('TEXTCOLOR',     (0,0), (-1,0), RL_WHITE),
+                ('FONTNAME',      (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE',      (0,0), (-1,-1), 9),
+                ('ALIGN',         (1,0), (-1,-1), 'CENTER'),
+                ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+                ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+                ('TOPPADDING',    (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ('BACKGROUND',    (0,6), (-1,7), colors.HexColor("#EEF2FF")),
+                ('FONTNAME',      (0,6), (-1,7), 'Helvetica-Bold'),
+            ])
+            story.append(Table(cmp_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 3*cm], style=cmp_style))
+            story.append(vsp(10))
+    else:
+        story.append(Paragraph(f"Sovereign Credit Rating Briefing", st_h1))
+        story.append(Paragraph(f"<b>{target}</b> | S&amp;P Methodology Analysis", st_h2))
+        story.append(Paragraph(
+            f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
+            f"Based on S&amp;P Global Rating Criteria",
+            st_small))
+        story.append(hr())
 
     # ── SECTION 1 — NATIONAL PORTFOLIO SNAPSHOT ───────────────────────────────
     story.append(Paragraph("1. National Portfolio Snapshot", st_h2))

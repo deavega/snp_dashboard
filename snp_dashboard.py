@@ -3282,6 +3282,16 @@ if f_macro:
                         final_indicative=sim_final,
                         cap_note=sim_cap or "",
                         df_master=df,
+                        stress_test=True,
+                        baseline_scores={
+                            "s_inst":          s_inst,
+                            "s_eco":           s_eco,
+                            "s_fis":           s_fis,
+                            "s_ext":           s_ext,
+                            "s_mon":           s_mon,
+                            "srm_rating":      srm_rating,
+                            "final_indicative": final_indicative,
+                        },
                     )
                 st.session_state["_stress_pdf_bytes"] = _stress_buf.getvalue()
                 st.session_state["_stress_pdf_scenario"] = (
