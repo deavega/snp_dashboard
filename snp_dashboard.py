@@ -1311,6 +1311,7 @@ if f_macro:
                     "📈 Economic": s_eco_n, "💰 Fiscal": s_fis_n,
                     "🌐 External": s_ext_n, "🏦 Monetary": s_mon_n,
                     "_ie": ie_n, "_fp": fp_n, "_srm": srm_n, "_qo": qo_n, "_nr": nr,
+                    "_mi": _mi_n,
                 })
 
             # ── Sub-tabs ─────────────────────────────────────────────────
@@ -1379,7 +1380,8 @@ if f_macro:
 
                 metric_rows = []
                 for c in comp_list:
-                    nr = c["_nr"]
+                    nr  = c["_nr"]
+                    _mi_c = c["_mi"]
                     metric_rows.append({
                         "Country":                  c["Country"],
                         "Actual Rating":            nr['Actual_Rating'],
@@ -1389,14 +1391,14 @@ if f_macro:
                         "FP Profile":               round(c["_fp"], 2),
                         "WGI Score":                round(float(nr['WGI_Score']), 1) if pd.notna(nr['WGI_Score']) else np.nan,
                         "GDP per Capita (USD)":     round(nr['GDP_PC'], 0),
-                        "Real GDP Growth (%)":      round(nr['Growth'], 1),
-                        "Fiscal Balance (% GDP)":   round(nr['Balance'], 1),
+                        "Real GDP Growth (%)":      round(_mi_c['growth'], 1),   # 10-yr S&P weighted avg
+                        "Fiscal Balance (% GDP)":   round(_mi_c['balance'], 1),  # 3-yr avg
                         "Debt-to-GDP (%)":          round(nr['Debt_GDP'], 1),
                         "Interest/Revenue (%)":     round(nr['Int_Rev'], 1),
-                        "GEFN (% CAR)":             round(nr['GEFN'], 1),
+                        "GEFN (% CAR)":             round(_mi_c['gefn'], 1),     # 3-yr avg
                         "NIIP (% GDP)":             round(nr['NIIP_CAR'], 1),
                         "Reserves (months)":        round(nr['Reserves'], 1),
-                        "CPI Inflation (%)":        round(nr['CPI'], 1),
+                        "CPI Inflation (%)":        round(_mi_c['cpi'], 1),      # 5-yr cycle avg
                         "Financial Depth (% GDP)":  round(nr['Fin_Depth'], 1),
                     })
 
@@ -1453,6 +1455,11 @@ if f_macro:
                 st.dataframe(
                     display_df.style.apply(style_full_table, axis=None),
                     use_container_width=True, height=620,
+                )
+                st.caption(
+                    "⚠️ Real GDP Growth = 10-yr S&P weighted avg (para. 36) · "
+                    "Fiscal Balance & GEFN = 3-yr avg · CPI = 5-yr cycle avg. "
+                    "All other metrics are current-year estimates."
                 )
 
             # ════════════════════════════════════════════════════════════
