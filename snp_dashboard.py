@@ -967,12 +967,13 @@ if f_macro:
                         st.error("🔴 Low Income — Significant structural weakness")
                 
                 with col2:
-                    st.metric("Trend Real GDP Growth (%)", f"{r['Growth']:.1f}%")
-                    if r['Growth'] > 5:
+                    st.metric("Real GDP Growth (10-yr avg)", f"{_mi['growth']:.1f}%",
+                              delta=f"{_mi['growth'] - r['Growth']:+.1f}% vs current est. ({r['Growth']:.1f}%)")
+                    if _mi['growth'] > 5:
                         st.success("🟢 High Growth — Positive rating momentum")
-                    elif r['Growth'] > 3:
+                    elif _mi['growth'] > 3:
                         st.info("🔵 Moderate Growth — Stable trajectory")
-                    elif r['Growth'] > 0:
+                    elif _mi['growth'] > 0:
                         st.warning("🟡 Low Growth — Limited fiscal space")
                     else:
                         st.error("🔴 Contraction — Severe credit pressure")
@@ -989,21 +990,22 @@ if f_macro:
                 | Factor | Value | S&P Implication |
                 |--------|-------|-----------------|
                 | GDP per Capita | ${r['GDP_PC']:,.0f} | {'Above $48K threshold — top tier' if r['GDP_PC']>48000 else 'Below $48K — score penalized'} |
-                | Real GDP Growth | {r['Growth']:.1f}% | {'Above 4% — 1 notch bonus applied' if r['Growth']>4 else 'Below 4% — no growth bonus'} |
+                | Real GDP Growth (10-yr avg) | {_mi['growth']:.1f}% | {'Above 4% — 1 notch bonus applied' if _mi['growth']>4 else 'Below 4% — no growth bonus'} |
                 | Diversification | Standard | No diversification bonus applied |
                 """)
 
             # ── EXTERNAL ──────────────────────────────────────────────
             with pillar_tabs[1]:
                 col1, col2, col3 = st.columns(3)
-                s_ext_full, s_liq, s_debt_pos = score_external(r['GEFN'], r['NIIP_CAR'], 20, r['Reserves'])
-                
+                s_ext_full, s_liq, s_debt_pos = score_external(_mi['gefn'], r['NIIP_CAR'], 20, r['Reserves'])
+
                 with col1:
-                    st.metric("GEFN (% of CAR)", f"{r['GEFN']:.1f}%")
+                    st.metric("GEFN (3-yr avg, % CAR)", f"{_mi['gefn']:.1f}%",
+                              delta=f"{_mi['gefn'] - r['GEFN']:+.1f}% vs current est. ({r['GEFN']:.1f}%)")
                     st.metric("Liquidity Score", f"{s_liq:.1f} / 6.0")
-                    if r['GEFN'] <= 50:
+                    if _mi['gefn'] <= 50:
                         st.success("🟢 Low external financing need")
-                    elif r['GEFN'] <= 75:
+                    elif _mi['gefn'] <= 75:
                         st.info("🔵 Moderate — manageable rollover risk")
                     else:
                         st.error("🔴 High GEFN — elevated rollover vulnerability")
@@ -1035,7 +1037,7 @@ if f_macro:
                 st.markdown(f"""
                 | Factor | Value | S&P Implication |
                 |--------|-------|-----------------|
-                | GEFN | {r['GEFN']:.1f}% | Liquidity score: {s_liq:.1f} |
+                | GEFN (3-yr avg) | {_mi['gefn']:.1f}% | Liquidity score: {s_liq:.1f} |
                 | NIIP | {r['NIIP_CAR']:.1f}% | Debt position score: {s_debt_pos:.1f} |
                 | Reserves | {r['Reserves']:.1f} months | {'Above 6mo — liquidity buffer adequate' if r['Reserves']>6 else 'Below 6mo — limited buffer'} |
                 | Combined External Score | {s_ext_full:.2f} | Average of liquidity + debt position |
@@ -1044,14 +1046,15 @@ if f_macro:
             # ── FISCAL ────────────────────────────────────────────────
             with pillar_tabs[2]:
                 col1, col2, col3 = st.columns(3)
-                s_fis_full, s_perf, s_burd = score_fiscal(r['Debt_GDP'], r['Int_Rev'], r['Balance'], "Neutral")
-                
+                s_fis_full, s_perf, s_burd = score_fiscal(r['Debt_GDP'], r['Int_Rev'], _mi['balance'], "Neutral")
+
                 with col1:
-                    st.metric("Fiscal Balance (% GDP)", f"{r['Balance']:.1f}%")
+                    st.metric("Fiscal Balance (3-yr avg, % GDP)", f"{_mi['balance']:.1f}%",
+                              delta=f"{_mi['balance'] - r['Balance']:+.1f}% vs current est. ({r['Balance']:.1f}%)")
                     st.metric("Performance Score", f"{s_perf:.1f} / 6.0")
-                    if r['Balance'] >= 0:
+                    if _mi['balance'] >= 0:
                         st.success("🟢 Surplus — fiscal consolidation achieved")
-                    elif r['Balance'] > -3:
+                    elif _mi['balance'] > -3:
                         st.info("🔵 Deficit within -3% — manageable")
                     else:
                         st.error("🔴 Deficit exceeds -3% — fiscal pressure")
@@ -1078,7 +1081,7 @@ if f_macro:
                 st.markdown(f"""
                 | Factor | Value | S&P Implication |
                 |--------|-------|-----------------|
-                | Fiscal Balance | {r['Balance']:.1f}% | Performance score: {s_perf:.1f} |
+                | Fiscal Balance (3-yr avg) | {_mi['balance']:.1f}% | Performance score: {s_perf:.1f} |
                 | Debt-to-GDP | {r['Debt_GDP']:.1f}% | {'≤45% — low burden' if r['Debt_GDP']<=45 else ('≤60% — moderate' if r['Debt_GDP']<=60 else '>60% — high burden')} |
                 | Interest/Revenue | {r['Int_Rev']:.1f}% | {'≤15% — affordable' if r['Int_Rev']<=15 else '>15% — affordability concern'} |
                 | Burden Score | {s_burd:.1f} | Combined debt & interest assessment |
@@ -1089,12 +1092,13 @@ if f_macro:
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    st.metric("CPI Inflation (%)", f"{r['CPI']:.1f}%")
-                    if r['CPI'] <= 3:
+                    st.metric("CPI Inflation (5-yr avg)", f"{_mi['cpi']:.1f}%",
+                              delta=f"{_mi['cpi'] - r['CPI']:+.1f}% vs current est. ({r['CPI']:.1f}%)")
+                    if _mi['cpi'] <= 3:
                         st.success("🟢 Price stability achieved")
-                    elif r['CPI'] <= 6:
+                    elif _mi['cpi'] <= 6:
                         st.info("🔵 Moderate inflation — within tolerance")
-                    elif r['CPI'] <= 10:
+                    elif _mi['cpi'] <= 10:
                         st.warning("🟡 Elevated inflation — credibility at risk")
                     else:
                         st.error("🔴 High inflation — monetary instability")
@@ -1120,7 +1124,7 @@ if f_macro:
                 | Factor | Value | S&P Implication |
                 |--------|-------|-----------------|
                 | FX Regime | Floating | Floating regime — full score eligibility |
-                | Inflation | {r['CPI']:.1f}% | {'≤3% + deep market → score 2 (best)' if r['CPI']<=3 and r['Fin_Depth']>40 else ('≤10% floating → score 3' if r['CPI']<=10 else 'High inflation → score 5')} |
+                | Inflation (5-yr avg) | {_mi['cpi']:.1f}% | {'≤3% + deep market → score 2 (best)' if _mi['cpi']<=3 and r['Fin_Depth']>40 else ('≤10% floating → score 3' if _mi['cpi']<=10 else 'High inflation → score 5')} |
                 | Financial Depth | {r['Fin_Depth']:.1f}% | {'Above 40% threshold — bonus applied' if r['Fin_Depth']>40 else 'Below 40% — no depth bonus'} |
                 | Monetary Credibility | High | Assumed high per regime classification |
                 """)
@@ -1909,31 +1913,31 @@ if f_macro:
                     "message": "Above $20,000 — provides meaningful creditworthiness anchor.",
                     "action": "Maintain investment environment to sustain income level trajectory."})
 
-            if r['Growth'] > 4.0:
+            if _mi['growth'] > 4.0:
                 signals.append({"pillar": "Economic", "type": "strength", "metric": "Real GDP Growth",
-                    "value": f"{r['Growth']:.1f}%",
+                    "value": f"{_mi['growth']:.1f}% (10-yr avg)",
                     "message": "Above 4% threshold — S&P applies 1-notch improvement bonus to economic score.",
                     "action": "Highlight growth consistency in investor relations narrative to reinforce positive momentum."})
-            elif r['Growth'] < 1.0:
+            elif _mi['growth'] < 1.0:
                 signals.append({"pillar": "Economic", "type": "weakness", "metric": "Real GDP Growth",
-                    "value": f"{r['Growth']:.1f}%",
+                    "value": f"{_mi['growth']:.1f}% (10-yr avg)",
                     "message": "Below 1% — near-stagnation signals fiscal and debt sustainability concerns.",
                     "action": "Credible fiscal stimulus or structural reform agenda needed to restore growth trajectory."})
 
             # Fiscal signals
-            if r['Balance'] < -5.0:
+            if _mi['balance'] < -5.0:
                 signals.append({"pillar": "Fiscal", "type": "weakness", "metric": "Fiscal Balance",
-                    "value": f"{r['Balance']:.1f}% GDP",
+                    "value": f"{_mi['balance']:.1f}% GDP (3-yr avg)",
                     "message": "Deficit exceeds -5% of GDP — materially above S&P's -3% manageable threshold.",
                     "action": "Present a credible medium-term fiscal consolidation path with specific revenue/expenditure targets."})
-            elif r['Balance'] < -3.0:
+            elif _mi['balance'] < -3.0:
                 signals.append({"pillar": "Fiscal", "type": "moderate", "metric": "Fiscal Balance",
-                    "value": f"{r['Balance']:.1f}% GDP",
+                    "value": f"{_mi['balance']:.1f}% GDP (3-yr avg)",
                     "message": "Deficit between -3% and -5% — outside the manageable band, watch trend direction.",
                     "action": "Demonstrate fiscal consolidation trajectory even if ceiling breach is temporary."})
             else:
                 signals.append({"pillar": "Fiscal", "type": "strength", "metric": "Fiscal Balance",
-                    "value": f"{r['Balance']:.1f}% GDP",
+                    "value": f"{_mi['balance']:.1f}% GDP (3-yr avg)",
                     "message": "Within or above -3% threshold — S&P views this as manageable fiscal performance.",
                     "action": "Communicate fiscal discipline narrative proactively in rating dialogue."})
 
@@ -1970,19 +1974,19 @@ if f_macro:
                     "action": "Maintain this ratio by controlling new debt issuance costs."})
 
             # External signals
-            if r['GEFN'] > 75:
+            if _mi['gefn'] > 75:
                 signals.append({"pillar": "External", "type": "weakness", "metric": "GEFN",
-                    "value": f"{r['GEFN']:.1f}%",
+                    "value": f"{_mi['gefn']:.1f}% (3-yr avg)",
                     "message": "Above 75% — elevated rollover and refinancing vulnerability; high sensitivity to global risk-off.",
                     "action": "Reduce reliance on short-term external financing; build reserve buffer above 6 months."})
-            elif r['GEFN'] > 50:
+            elif _mi['gefn'] > 50:
                 signals.append({"pillar": "External", "type": "moderate", "metric": "GEFN",
-                    "value": f"{r['GEFN']:.1f}%",
+                    "value": f"{_mi['gefn']:.1f}% (3-yr avg)",
                     "message": "Between 50%–75% — moderate external financing need; manageable but directionally important.",
                     "action": "Diversify investor base (domestic vs foreign); extend debt maturity profile."})
             else:
                 signals.append({"pillar": "External", "type": "strength", "metric": "GEFN",
-                    "value": f"{r['GEFN']:.1f}%",
+                    "value": f"{_mi['gefn']:.1f}% (3-yr avg)",
                     "message": "Below 50% — low gross external financing need; resilient to global liquidity tightening.",
                     "action": "Highlight low GEFN as external resilience strength in rating discussions."})
 
