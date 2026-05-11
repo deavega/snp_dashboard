@@ -2912,12 +2912,122 @@ if f_macro:
             )
             st.caption("Opens WhatsApp Web or the app with the message pre-filled. The recipient taps the PDF link inside the message to download it.")
 
+        # ── Compute methodology-aligned defaults from trend_df ────────────────
+        def get_avg(country, metric, trend_df, yr_start_type='e', n_years=3):
+            """Average from estimate year + n forecast years."""
+            try:
+                sub = trend_df[
+                    (trend_df['Country'] == country) &
+                    (trend_df['Metric'] == metric)
+                ].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f',''))
+                    if str(y).strip().endswith(('e','f')) or str(y).strip().isdigit()
+                    else 0)
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                est = sub[sub['_type']=='e']
+                if est.empty: return np.nan
+                anchor = est['_n'].max()
+                window = sub[sub['_n'].between(anchor, anchor + n_years - 1)]
+                return round(window['Value'].mean(), 2) if not window.empty else np.nan
+            except:
+                return np.nan
+
+        def get_10yr_trend_growth(country, metric, trend_df):
+            """
+            10-year weighted average per S&P para. 36:
+            6 historical + 1 estimate + 3 forecast.
+            Latest year, estimate, and forecasts weighted 100%;
+            earlier years weighted lower.
+            """
+            try:
+                sub = trend_df[
+                    (trend_df['Country'] == country) &
+                    (trend_df['Metric'] == metric)
+                ].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f','')))
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                sub = sub.sort_values('_n').tail(10)
+
+                # S&P: latest hist, estimate, forecasts = weight 1.0; earlier = weight 0.5
+                est_yr = sub[sub['_type']=='e']['_n'].max() if not sub[sub['_type']=='e'].empty else sub['_n'].max()
+                sub['_w'] = sub['_n'].apply(lambda n: 1.0 if n >= est_yr - 1 else 0.5)
+                wavg = (sub['Value'] * sub['_w']).sum() / sub['_w'].sum()
+                return round(wavg, 2)
+            except:
+                return np.nan
+
+        def get_cycle_avg(country, metric, trend_df, n=5):
+            """Multi-year cycle average for inflation — use 5-year average."""
+            try:
+                sub = trend_df[
+                    (trend_df['Country'] == country) &
+                    (trend_df['Metric'] == metric)
+                ].copy()
+                if sub.empty: return np.nan
+                sub['_n'] = sub['Year'].apply(
+                    lambda y: float(str(y).replace('e','').replace('f','')))
+                sub['_type'] = sub['Year'].apply(
+                    lambda y: 'e' if str(y).strip().endswith('e')
+                    else ('f' if str(y).strip().endswith('f') else 'h'))
+                # Use historical + estimate only (not forecast) for inflation cycle
+                hist_est = sub[sub['_type'].isin(['h','e'])].sort_values('_n').tail(n)
+                return round(hist_est['Value'].mean(), 2) if not hist_est.empty else np.nan
+            except:
+                return np.nan
+
+        # ── Apply per S&P methodology ─────────────────────────────────────────
+        _td = trend_df if trend_df is not None and not trend_df.empty else None
+
+        # GDP per capita — current year estimate only (already in r['GDP_PC'])
+        sim_gdp_default = float(r['GDP_PC'])
+
+        # Real GDP growth — 10-year weighted trend (para. 36)
+        _g10 = get_10yr_trend_growth(target, 'Real GDP growth (%)', _td) if _td is not None else np.nan
+        sim_growth_default = _g10 if not np.isnan(_g10) else float(r['Growth'])
+
+        # Fiscal balance — average current estimate + 2 forecast years (para. 73)
+        _bal = get_avg(target, 'GG balance/GDP (%)', _td, n_years=3) if _td is not None else np.nan
+        sim_bal_default = _bal if not np.isnan(_bal) else float(r['Balance'])
+
+        # Net debt/GDP — current year estimate (burden assessment uses current level)
+        sim_debt_default = float(r['Debt_GDP'])
+
+        # Interest/Revenue — current year estimate
+        sim_int_default = float(r['Int_Rev'])
+
+        # GEFN — average current estimate + 2 forecast years (para. 54)
+        _gefn = get_avg(target, 'Gross ext. fin. needs/(CAR + use. res.) (%)', _td, n_years=3) if _td is not None else np.nan
+        sim_gefn_default = _gefn if not np.isnan(_gefn) else float(r['GEFN'])
+
+        # NIIP — current year estimate
+        sim_niip_default = float(r['NIIP_CAR'])
+
+        # Inflation — 5-year cycle average (para. 115-117)
+        _cpi = get_cycle_avg(target, 'CPI growth (%)', _td, n=5) if _td is not None else np.nan
+        sim_cpi_default = _cpi if not np.isnan(_cpi) else float(r['CPI'])
+
+        # Financial depth — current year estimate
+        sim_depth_default = int(r['Fin_Depth'])
+
+        # Reserves — current year estimate
+        sim_reserves_default = float(r['Reserves'])
+
         with tabs[4]: # METHODOLOGY SIMULATOR (GAUGE STYLE)
             st.subheader("Interactive Stress-Test Simulator")
             st.info("Gunakan input angka di bawah untuk mensimulasikan dampak perubahan indikator terhadap rating indikatif.")
             st.caption(
-                "📅 Default values pre-filled from the latest available estimate year "
-                "(2025e if available, otherwise 2024). Adjust any input to simulate scenarios."
+                "📐 **Methodology-aligned defaults:** GDP growth = 10-year weighted trend | "
+                "Fiscal balance & GEFN = 3-year average (current estimate + 2 forecast) | "
+                "Inflation = 5-year cycle average | Other metrics = current year estimate. "
+                "All values can be manually adjusted for stress-testing."
             )
             
             sc1, sc2, sc3 = st.columns(3)
@@ -2925,7 +3035,9 @@ if f_macro:
             # Input Angka Presisi (Tanpa Slider untuk akurasi)
             sc1.markdown("### Economic & Institutional")
             sim_gdp = sc1.number_input("GDP Per Capita (USD)", value=float(r['GDP_PC']), step=100.0)
-            sim_growth = sc1.number_input("Trend Real GDP Growth (%)", value=float(r['Growth']), step=0.1)
+            sim_growth = sc1.number_input("Trend Real GDP Growth (%)",
+                value=sim_growth_default, step=0.1,
+                help="S&P uses 10-year weighted average (6 hist + 1 est + 3 fcst)")
             sim_div = sc1.selectbox("Economic Diversification", ["High", "Standard", "Low"], index = 1)
             sim_wgi = sc1.number_input("WGI Score (Governance)", value=float(r['WGI_Score']) if pd.notna(r['WGI_Score']) else 50.0, step=1.0)
 
@@ -2948,16 +3060,32 @@ if f_macro:
             ) if sim_resource_discovery else None
 
             sc2.markdown("### Fiscal & Debt")
-            sim_bal = sc2.number_input("Fiscal Balance (% GDP)", value=float(r['Balance']), step=0.1)
-            sim_debt = sc2.number_input("Debt-to-GDP (%)", value=float(r['Debt_GDP']), step=0.5)
-            sim_int = sc2.number_input("Interest-to-Revenue (%)", value=float(r['Int_Rev']), step=0.1)
+            sim_bal  = sc2.number_input("Fiscal Balance (% GDP)",
+                value=sim_bal_default, step=0.1,
+                help="S&P uses average of current estimate + 2–3 forecast years")
+
+
+            sim_debt = sc2.number_input("Debt-to-GDP (%)",
+                value=sim_debt_default, step=0.5,
+                help="S&P uses current year estimate")
+            sim_int  = sc2.number_input("Interest-to-Revenue (%)",
+                value=sim_int_default, step=0.1,
+                help="S&P uses current year estimate")
             sim_flex = sc2.selectbox("Revenue Flexibility", ["High", "Neutral", "Low"], index=1)
 
             sc3.markdown("### External & Monetary")
-            sim_gefn = sc3.number_input("GEFN (% of CAR)", value=float(r['GEFN']), step=1.0)
-            sim_niip = sc3.number_input("NIIP (% of GDP)", value=float(r['NIIP_CAR']), step=1.0)
-            sim_cpi = sc3.number_input("Inflation Trends (%)", value=float(r['CPI']), step=0.1)
-            sim_depth = sc3.number_input("Financial Depth (0-100)", value=int(r['Fin_Depth']), step=1)
+            sim_gefn = sc3.number_input("GEFN (% of CAR)",
+                value=sim_gefn_default, step=1.0,
+                help="S&P uses average of current estimate + 2–3 forecast years")
+            sim_niip = sc3.number_input("NIIP (% of GDP)",
+                value=sim_niip_default, step=1.0,
+                help="S&P uses current year estimate + trend direction")
+            sim_cpi  = sc3.number_input("Inflation Trends (%)",
+                value=sim_cpi_default, step=0.1,
+                help="S&P uses multi-year cycle average (~5 years hist + estimate)")
+            sim_depth = sc3.number_input("Financial Depth (0-100)",
+                value=sim_depth_default, step=1,
+                help="S&P uses current year estimate")
             sim_regime = sc3.selectbox("FX Regime", ["Floating", "Fixed/Managed"])
 
             # ── Recalculate pillar scores ─────────────────────────────────────
