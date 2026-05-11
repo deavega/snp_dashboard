@@ -3245,12 +3245,22 @@ if f_macro:
             # ── Stress-Test PDF Report ────────────────────────────────────────
             st.divider()
             st.markdown("### 📑 Export Stress-Test Report")
-            st.markdown(
-                "Generate a PDF briefing note using the **simulated inputs above** "
-                "instead of the actual baseline data."
-            )
 
-            # Show a diff summary so user knows what changed vs baseline
+            # ── Fingerprint: invalidate cached PDF whenever any input changes ─
+            _stress_fp = (
+                target,
+                sim_gdp, sim_growth, sim_div, sim_wgi,
+                sim_bal, sim_debt, sim_int, sim_flex,
+                sim_gefn, sim_niip, sim_cpi, int(sim_depth), sim_regime,
+                sim_event_risk, sim_liquid_assets,
+                sim_resource_discovery,
+                sim_resource_magnitude if sim_resource_discovery else None,
+            )
+            if st.session_state.get("_stress_fp") != _stress_fp:
+                st.session_state["_stress_pdf_bytes"]    = None
+                st.session_state["_stress_pdf_scenario"] = None
+
+            # ── Score-change summary ──────────────────────────────────────────
             deltas = []
             if abs(p_inst_sim - s_inst) >= 0.1: deltas.append(f"Institutional {s_inst:.1f}→{p_inst_sim:.1f}")
             if abs(p_eco_sim  - s_eco)  >= 0.1: deltas.append(f"Economic {s_eco:.1f}→{p_eco_sim:.1f}")
@@ -3260,7 +3270,7 @@ if f_macro:
             if deltas:
                 st.caption(f"📊 Score changes vs baseline: {' | '.join(deltas)}")
             else:
-                st.caption("📊 No pillar score changes vs baseline — adjust inputs above to create a stress scenario.")
+                st.caption("📊 No pillar score changes yet — adjust inputs above to create a stress scenario.")
 
             if st.button("⚙️ Generate Stress-Test PDF", use_container_width=True):
                 with st.spinner("Generating stress-test PDF..."):
@@ -3294,7 +3304,8 @@ if f_macro:
                         final_indicative=final_indicative,
                         supp_adj=supp_adj,
                     )
-                st.session_state["_stress_pdf_bytes"] = _stress_buf.getvalue()
+                st.session_state["_stress_pdf_bytes"]    = _stress_buf.getvalue()
+                st.session_state["_stress_fp"]           = _stress_fp
                 st.session_state["_stress_pdf_scenario"] = (
                     f"{target} | SRM: {sim_rating}"
                     + (f" → {sim_final} (after supp.)" if sim_supp_adj != 0 else "")
@@ -3309,10 +3320,7 @@ if f_macro:
                     mime="application/pdf",
                     use_container_width=True,
                 )
-                st.caption(
-                    f"📄 Scenario captured: {st.session_state.get('_stress_pdf_scenario', '')}. "
-                    "Regenerate if you change inputs above."
-                )
+                st.caption(f"📄 {st.session_state.get('_stress_pdf_scenario', '')}")
 
 else:
     st.info("👋 Welcome! Please upload the S&P Macro dataset to begin. Reference WGI data will be loaded automatically from the cloud.")
