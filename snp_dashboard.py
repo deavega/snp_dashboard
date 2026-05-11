@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from briefing_generator import generate_pdf, generate_pptx
+from briefing_generator import generate_pdf, generate_pptx, generate_stress_pdf
 import requests
 import io
 import urllib.parse
@@ -3264,34 +3264,35 @@ if f_macro:
 
             if st.button("⚙️ Generate Stress-Test PDF", use_container_width=True):
                 with st.spinner("Generating stress-test PDF..."):
-                    _sim_qo = RATING_TO_NUM.get(r['Actual_Rating'], 8) - RATING_TO_NUM.get(sim_final, 8)
-                    _stress_buf = generate_pdf(
+                    _stress_buf = generate_stress_pdf(
                         target=target, r=r,
-                        srm_rating=sim_rating, qo=_sim_qo,
-                        s_inst=p_inst_sim, s_eco=p_eco_sim,
-                        s_fis=p_fis_sim, s_ext=p_ext_sim, s_mon=p_mon_sim,
-                        prof_ie=res_ie, prof_fp=res_fp,
-                        comp_list=briefing_comp_list,
-                        sel_nations=briefing_nations,
-                        trend_df=trend_df,
-                        selected_metrics=briefing_metrics,
-                        signals=signals,
-                        qo_opportunities=qo_opportunities,
-                        supp_adj=sim_supp_adj,
-                        supp_factors=sim_supp_factors,
-                        final_indicative=sim_final,
-                        cap_note=sim_cap or "",
-                        df_master=df,
-                        stress_test=True,
-                        baseline_scores={
-                            "s_inst":          s_inst,
-                            "s_eco":           s_eco,
-                            "s_fis":           s_fis,
-                            "s_ext":           s_ext,
-                            "s_mon":           s_mon,
-                            "srm_rating":      srm_rating,
-                            "final_indicative": final_indicative,
-                        },
+                        sim_gdp=sim_gdp, sim_growth=sim_growth,
+                        sim_div=sim_div, sim_wgi=sim_wgi,
+                        sim_bal=sim_bal, sim_debt=sim_debt,
+                        sim_int=sim_int, sim_flex=sim_flex,
+                        sim_gefn=sim_gefn, sim_niip=sim_niip,
+                        sim_cpi=sim_cpi, sim_depth=sim_depth,
+                        sim_regime=sim_regime,
+                        sim_event_risk=sim_event_risk,
+                        sim_liquid_assets=sim_liquid_assets,
+                        sim_resource_discovery=sim_resource_discovery,
+                        sim_resource_magnitude=sim_resource_magnitude,
+                        p_inst_sim=p_inst_sim, p_eco_sim=p_eco_sim,
+                        p_fis_sim=p_fis_sim,   p_ext_sim=p_ext_sim,
+                        p_mon_sim=p_mon_sim,
+                        p_fis_perf_sim=p_fis_perf_sim,
+                        p_fis_burd_sim=p_fis_burd_sim,
+                        res_ie=res_ie, res_fp=res_fp,
+                        sim_rating=sim_rating,
+                        sim_supp_adj=sim_supp_adj,
+                        sim_supp_factors=sim_supp_factors,
+                        sim_final=sim_final, sim_cap=sim_cap,
+                        s_inst=s_inst, s_eco=s_eco,
+                        s_fis=s_fis,   s_ext=s_ext, s_mon=s_mon,
+                        prof_ie=prof_ie, prof_fp=prof_fp,
+                        srm_rating=srm_rating,
+                        final_indicative=final_indicative,
+                        supp_adj=supp_adj,
                     )
                 st.session_state["_stress_pdf_bytes"] = _stress_buf.getvalue()
                 st.session_state["_stress_pdf_scenario"] = (

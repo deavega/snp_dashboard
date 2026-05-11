@@ -359,22 +359,16 @@ def generate_pdf(target, r, srm_rating, qo,
                  comp_list, sel_nations, trend_df, selected_metrics,
                  signals, qo_opportunities,
                  supp_adj=0, supp_factors=None, final_indicative=None, cap_note=None,
-                 df_master=None,
-                 stress_test=False, baseline_scores=None):
-    """
-    Returns a bytes buffer containing the PDF briefing note.
-    When stress_test=True, baseline_scores should be a dict with keys:
-    s_inst, s_eco, s_fis, s_ext, s_mon, srm_rating, final_indicative.
-    """
+                 df_master=None):
+    """Returns a bytes buffer containing the PDF briefing note."""
     supp_factors     = supp_factors or []
     final_indicative = final_indicative or srm_rating
     buf = io.BytesIO()
-    _title = f"Stress-Test Scenario — {target}" if stress_test else f"Sovereign Rating Briefing — {target}"
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=1.8*cm, rightMargin=1.8*cm,
         topMargin=2*cm, bottomMargin=2*cm,
-        title=_title
+        title=f"Sovereign Rating Briefing — {target}"
     )
 
     # ── Styles ────────────────────────────────────────────────────────────────
@@ -399,85 +393,13 @@ def generate_pdf(target, r, srm_rating, qo,
     def vsp(h=6): return Spacer(1, h)
 
     # ── COVER / HEADER ────────────────────────────────────────────────────────
-    if stress_test:
-        story.append(Paragraph("⚠️ Stress-Test Scenario Report", st_h1))
-        story.append(Paragraph(f"<b>{target}</b> | Simulated Rating Analysis", st_h2))
-        story.append(Paragraph(
-            f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
-            f"This report reflects <b>hypothetical inputs</b>, not the baseline actual data.",
-            st_small))
-        story.append(hr())
-
-        # Stress-test disclaimer banner
-        disclaimer_data = [[
-            Paragraph(
-                "⚠️  <b>STRESS-TEST SCENARIO — NOT AN OFFICIAL RATING</b><br/>"
-                "<font size='8'>The pillar scores, profiles, and indicative ratings in this report "
-                "are derived from user-defined hypothetical inputs. They do not represent "
-                "S&amp;P's actual assessment of the sovereign.</font>",
-                S("Disc", fontSize=9, textColor=colors.HexColor("#7c2d12"),
-                  fontName="Helvetica", leading=13)
-            )
-        ]]
-        disclaimer_tbl = Table(disclaimer_data, colWidths=[17*cm])
-        disclaimer_tbl.setStyle(TableStyle([
-            ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor("#fff7ed")),
-            ('BOX',           (0,0), (-1,-1), 1.2, colors.HexColor("#f97316")),
-            ('LEFTPADDING',   (0,0), (-1,-1), 10),
-            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
-            ('TOPPADDING',    (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ]))
-        story.append(disclaimer_tbl)
-        story.append(vsp(10))
-
-        # Baseline vs scenario comparison table (if baseline provided)
-        if baseline_scores:
-            story.append(Paragraph("Baseline vs. Stress-Test Scenario", st_h3))
-            bs = baseline_scores
-            def _delta(base, sim):
-                d = sim - base
-                arrow = "▲" if d < 0 else ("▼" if d > 0 else "–")
-                color = "#065f46" if d < 0 else ("#991b1b" if d > 0 else "#64748B")
-                sign  = f"{d:+.1f}" if d != 0 else "–"
-                return Paragraph(
-                    f"<font color='{color}'><b>{arrow} {sign}</b></font>",
-                    S("Dlt", fontSize=9, alignment=TA_CENTER)
-                )
-
-            cmp_data = [
-                ["Pillar", "Baseline", "Simulated", "Change"],
-                ["🏛 Institutional", f"{bs['s_inst']:.1f}", f"{s_inst:.1f}", _delta(bs['s_inst'], s_inst)],
-                ["📈 Economic",      f"{bs['s_eco']:.1f}",  f"{s_eco:.1f}",  _delta(bs['s_eco'],  s_eco)],
-                ["💰 Fiscal",        f"{bs['s_fis']:.1f}",  f"{s_fis:.1f}",  _delta(bs['s_fis'],  s_fis)],
-                ["🌐 External",      f"{bs['s_ext']:.1f}",  f"{s_ext:.1f}",  _delta(bs['s_ext'],  s_ext)],
-                ["🏦 Monetary",      f"{bs['s_mon']:.1f}",  f"{s_mon:.1f}",  _delta(bs['s_mon'],  s_mon)],
-                ["SRM Rating",      bs['srm_rating'],       srm_rating,      ""],
-                ["Final Rating",    bs['final_indicative'], final_indicative, ""],
-            ]
-            cmp_style = TableStyle([
-                ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
-                ('TEXTCOLOR',     (0,0), (-1,0), RL_WHITE),
-                ('FONTNAME',      (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE',      (0,0), (-1,-1), 9),
-                ('ALIGN',         (1,0), (-1,-1), 'CENTER'),
-                ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-                ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
-                ('TOPPADDING',    (0,0), (-1,-1), 4),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                ('BACKGROUND',    (0,6), (-1,7), colors.HexColor("#EEF2FF")),
-                ('FONTNAME',      (0,6), (-1,7), 'Helvetica-Bold'),
-            ])
-            story.append(Table(cmp_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 3*cm], style=cmp_style))
-            story.append(vsp(10))
-    else:
-        story.append(Paragraph(f"Sovereign Credit Rating Briefing", st_h1))
-        story.append(Paragraph(f"<b>{target}</b> | S&amp;P Methodology Analysis", st_h2))
-        story.append(Paragraph(
-            f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
-            f"Based on S&amp;P Global Rating Criteria",
-            st_small))
-        story.append(hr())
+    story.append(Paragraph(f"Sovereign Credit Rating Briefing", st_h1))
+    story.append(Paragraph(f"<b>{target}</b> | S&amp;P Methodology Analysis", st_h2))
+    story.append(Paragraph(
+        f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')} &nbsp;|&nbsp; "
+        f"Based on S&amp;P Global Rating Criteria",
+        st_small))
+    story.append(hr())
 
     # ── SECTION 1 — NATIONAL PORTFOLIO SNAPSHOT ───────────────────────────────
     story.append(Paragraph("1. National Portfolio Snapshot", st_h2))
@@ -1040,6 +962,394 @@ def generate_pdf(target, r, srm_rating, qo,
     doc.build(story)
     buf.seek(0)
     return buf
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STRESS-TEST PDF GENERATOR
+# ─────────────────────────────────────────────────────────────────────────────
+
+def generate_stress_pdf(
+        target, r,
+        # ── user-defined scenario inputs ─────────────────────────────────────
+        sim_gdp, sim_growth, sim_div, sim_wgi,
+        sim_bal, sim_debt, sim_int, sim_flex,
+        sim_gefn, sim_niip, sim_cpi, sim_depth, sim_regime,
+        sim_event_risk, sim_liquid_assets,
+        sim_resource_discovery, sim_resource_magnitude,
+        # ── derived simulated scores ──────────────────────────────────────────
+        p_inst_sim, p_eco_sim, p_fis_sim, p_ext_sim, p_mon_sim,
+        p_fis_perf_sim, p_fis_burd_sim,
+        res_ie, res_fp,
+        sim_rating, sim_supp_adj, sim_supp_factors, sim_final, sim_cap,
+        # ── baseline scores for comparison ───────────────────────────────────
+        s_inst, s_eco, s_fis, s_ext, s_mon,
+        prof_ie, prof_fp,
+        srm_rating, final_indicative, supp_adj,
+):
+    """Compact stress-test report: inputs → score derivation → baseline comparison."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1.8*cm, rightMargin=1.8*cm,
+        topMargin=2*cm, bottomMargin=2*cm,
+        title=f"Stress-Test Scenario — {target}",
+    )
+
+    styles = getSampleStyleSheet()
+    S = lambda name, **kw: ParagraphStyle(name, **kw)
+    st_h1    = S("H1",    fontSize=16, textColor=colors.HexColor("#7c2d12"),
+                 fontName="Helvetica-Bold", spaceAfter=4, spaceBefore=8)
+    st_h2    = S("H2",    fontSize=11, textColor=RL_NAVY, fontName="Helvetica-Bold",
+                 spaceAfter=3, spaceBefore=8)
+    st_h3    = S("H3",    fontSize=9,  textColor=RL_TEAL, fontName="Helvetica-Bold",
+                 spaceAfter=2, spaceBefore=5)
+    st_body  = S("Body",  fontSize=8.5, leading=12, spaceAfter=3)
+    st_small = S("Small", fontSize=8,  textColor=RL_MGREY, leading=11)
+    st_ctr   = S("Ctr",   fontSize=9,  alignment=TA_CENTER)
+    st_r     = S("R",     fontSize=9,  alignment=TA_RIGHT)
+
+    story = []
+    def hr(): return HRFlowable(width="100%", thickness=0.5,
+                                color=colors.HexColor("#CBD5E1"), spaceAfter=4)
+    def vsp(h=6): return Spacer(1, h)
+
+    FULL_W  = 17 * cm   # usable page width
+
+    # ── HEADER ───────────────────────────────────────────────────────────────
+    story.append(Paragraph("⚠️  Stress-Test Scenario Report", st_h1))
+    story.append(Paragraph(
+        f"<b>{target}</b> &nbsp;|&nbsp; S&amp;P Methodology — Simulated Inputs",
+        S("Sub", fontSize=11, textColor=RL_NAVY, fontName="Helvetica-Bold")))
+    story.append(Paragraph(
+        f"Generated: {now_jakarta().strftime('%d %B %Y, %H:%M')}",
+        st_small))
+    story.append(vsp(6))
+
+    # Disclaimer banner
+    disc_para = Paragraph(
+        "<b>NOT AN OFFICIAL RATING.</b> All scores and ratings below are derived from "
+        "user-defined hypothetical inputs and do not represent S&amp;P's actual sovereign assessment.",
+        S("Disc", fontSize=8, textColor=colors.HexColor("#7c2d12"), leading=12))
+    disc_tbl = Table([[disc_para]], colWidths=[FULL_W])
+    disc_tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor("#fff7ed")),
+        ('BOX',           (0,0), (-1,-1), 1.2, colors.HexColor("#f97316")),
+        ('LEFTPADDING',   (0,0), (-1,-1), 8),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+        ('TOPPADDING',    (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(disc_tbl)
+    story.append(vsp(10))
+
+    # ── SECTION 1 — SCENARIO INPUTS ──────────────────────────────────────────
+    story.append(Paragraph("1. Scenario Input Assumptions", st_h2))
+    story.append(hr())
+
+    def _row(label, value, note=""):
+        return [
+            Paragraph(label, st_body),
+            Paragraph(f"<b>{value}</b>", S("V", fontSize=9, fontName="Helvetica-Bold",
+                                            alignment=TA_RIGHT)),
+            Paragraph(note, st_small),
+        ]
+
+    COL = [6.5*cm, 3.5*cm, 7*cm]
+
+    # Economic & Institutional
+    story.append(Paragraph("Economic & Institutional", st_h3))
+    eco_rows = [
+        [Paragraph("<b>Indicator</b>", st_small),
+         Paragraph("<b>Value</b>",     S("Hdr", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+         Paragraph("<b>Note</b>",      st_small)],
+        _row("GDP per Capita (USD)",       f"${sim_gdp:,.0f}",    "Baseline: " + f"${r['GDP_PC']:,.0f}"),
+        _row("Trend Real GDP Growth (%)",  f"{sim_growth:.1f}%",  "10-yr weighted avg per S&P para.36"),
+        _row("Economic Diversification",   sim_div,               "High / Standard / Low"),
+        _row("WGI Score (Governance)",     f"{sim_wgi:.1f}",      f"Baseline: {r['WGI_Score']:.1f}"),
+    ]
+    eco_tbl = Table(eco_rows, colWidths=COL)
+    eco_tbl.setStyle(_inp_style())
+    story.append(eco_tbl)
+    story.append(vsp(6))
+
+    # Fiscal & Debt
+    story.append(Paragraph("Fiscal & Debt", st_h3))
+    fis_rows = [
+        [Paragraph("<b>Indicator</b>", st_small),
+         Paragraph("<b>Value</b>",     S("Hdr2", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+         Paragraph("<b>Note</b>",      st_small)],
+        _row("Fiscal Balance (% GDP)",     f"{sim_bal:.1f}%",   f"Baseline: {r['Balance']:.1f}%"),
+        _row("Debt-to-GDP (%)",            f"{sim_debt:.1f}%",  f"Baseline: {r['Debt_GDP']:.1f}%"),
+        _row("Interest-to-Revenue (%)",    f"{sim_int:.1f}%",   f"Baseline: {r['Int_Rev']:.1f}%"),
+        _row("Revenue Flexibility",        sim_flex,             "High / Neutral / Low"),
+    ]
+    fis_tbl = Table(fis_rows, colWidths=COL)
+    fis_tbl.setStyle(_inp_style())
+    story.append(fis_tbl)
+    story.append(vsp(6))
+
+    # External & Monetary
+    story.append(Paragraph("External & Monetary", st_h3))
+    ext_rows = [
+        [Paragraph("<b>Indicator</b>", st_small),
+         Paragraph("<b>Value</b>",     S("Hdr3", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+         Paragraph("<b>Note</b>",      st_small)],
+        _row("GEFN (% of CAR)",            f"{sim_gefn:.1f}%",  f"Baseline: {r['GEFN']:.1f}%"),
+        _row("NIIP (% of GDP)",            f"{sim_niip:.1f}%",  f"Baseline: {r['NIIP_CAR']:.1f}%"),
+        _row("CPI Inflation (%)",          f"{sim_cpi:.1f}%",   f"Baseline: {r['CPI']:.1f}%"),
+        _row("Financial Depth (% GDP)",    f"{sim_depth:.0f}%", f"Baseline: {r['Fin_Depth']:.0f}%"),
+        _row("FX Regime",                  sim_regime,           "Floating / Fixed/Managed"),
+    ]
+    ext_tbl = Table(ext_rows, colWidths=COL)
+    ext_tbl.setStyle(_inp_style())
+    story.append(ext_tbl)
+    story.append(vsp(6))
+
+    # Supplemental inputs
+    story.append(Paragraph("Supplemental & Transitional Factors", st_h3))
+    sup_rows = [
+        [Paragraph("<b>Factor</b>", st_small),
+         Paragraph("<b>Value</b>",  S("Hdr4", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+         Paragraph("<b>Note</b>",   st_small)],
+        _row("Event Risk",                 "Yes" if sim_event_risk    else "No",  "Imminent political/security risk"),
+        _row("Liquid Govt Assets (% GDP)", f"{sim_liquid_assets:.1f}%",           ">100% with net asset position → +1 notch"),
+        _row("Significant Resource Discovery",
+             ("Yes — " + (sim_resource_magnitude or "")) if sim_resource_discovery else "No",
+             "Para. 15 transitional factor"),
+    ]
+    sup_tbl = Table(sup_rows, colWidths=COL)
+    sup_tbl.setStyle(_inp_style())
+    story.append(sup_tbl)
+    story.append(vsp(10))
+
+    # ── SECTION 2 — SCORE DERIVATION ─────────────────────────────────────────
+    story.append(Paragraph("2. How Inputs Form Pillar Scores", st_h2))
+    story.append(hr())
+
+    # helper: coloured score cell
+    def _score_cell(score):
+        pct = (1 - (float(score) - 1) / 5) * 100
+        bg  = RL_GREEN if pct >= 60 else (RL_YELLOW if pct >= 40 else RL_RED)
+        return bg, f"{float(score):.1f}"
+
+    def _deriv_block(pillar_label, steps, score):
+        """Returns a Table row: [pillar name | derivation steps | score]."""
+        bg, sc_str = _score_cell(score)
+        step_paras = [Paragraph(s, S("Step", fontSize=8, leading=11)) for s in steps]
+        tbl = Table(
+            [[Paragraph(f"<b>{pillar_label}</b>", S("PL", fontSize=9, fontName="Helvetica-Bold")),
+              step_paras,
+              Paragraph(f"<b>{sc_str}</b>", S("SC", fontSize=14, fontName="Helvetica-Bold",
+                                               alignment=TA_CENTER))]],
+            colWidths=[3.5*cm, 10*cm, 3.5*cm],
+        )
+        tbl.setStyle(TableStyle([
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+            ('BACKGROUND',    (2,0), (2,0),   bg),
+            ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+            ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+            ('LEFTPADDING',   (0,0), (-1,-1), 6),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 6),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        return tbl
+
+    # ── Institutional ────────────────────────────────────────────────────────
+    story.append(_deriv_block(
+        "🏛 Institutional",
+        [f"WGI Score = {sim_wgi:.1f}",
+         f"Formula: 6 − (WGI ÷ 20) = 6 − {sim_wgi/20:.2f} = <b>{p_inst_sim:.2f}</b>",
+         "Range: 1 (best governance) → 6 (weakest)"],
+        p_inst_sim,
+    ))
+    story.append(vsp(4))
+
+    # ── Economic ─────────────────────────────────────────────────────────────
+    if   sim_gdp > 48700: _eco_base, _eco_tier = 1, ">$48,700"
+    elif sim_gdp > 34600: _eco_base, _eco_tier = 2, "$34,601–$48,700"
+    elif sim_gdp > 20500: _eco_base, _eco_tier = 3, "$20,501–$34,600"
+    elif sim_gdp > 7000:  _eco_base, _eco_tier = 4, "$7,001–$20,500"
+    elif sim_gdp > 1400:  _eco_base, _eco_tier = 5, "$1,401–$7,000"
+    else:                 _eco_base, _eco_tier = 6, "≤$1,400"
+    _bench = 0.9 if _eco_base <= 2 else (2.0 if _eco_base == 3 else 2.3)
+    _growth_note = (f"Growth {sim_growth:.1f}% > benchmark×1.5 ({_bench*1.5:.1f}%) → −1"
+                    if sim_growth > _bench * 1.5 else
+                    f"Growth {sim_growth:.1f}% < benchmark×0.5 ({_bench*0.5:.1f}%) → +1"
+                    if sim_growth < _bench * 0.5 else
+                    f"Growth {sim_growth:.1f}% within benchmark range → no adj.")
+    _div_note = ("High diversification → −1" if sim_div == "High" else
+                 "Low diversification → +1"  if sim_div == "Low"  else
+                 "Standard diversification → no adj.")
+    story.append(_deriv_block(
+        "📈 Economic",
+        [f"GDP/capita ${sim_gdp:,.0f} → tier {_eco_base} ({_eco_tier}) → base score {_eco_base}",
+         _growth_note,
+         _div_note,
+         f"Final score: <b>{p_eco_sim:.1f}</b>"],
+        p_eco_sim,
+    ))
+    story.append(vsp(4))
+
+    # ── Fiscal ───────────────────────────────────────────────────────────────
+    story.append(_deriv_block(
+        "💰 Fiscal",
+        [f"Fiscal balance {sim_bal:.1f}% → performance score = {p_fis_perf_sim:.0f}",
+         f"Debt {sim_debt:.1f}% × Int/Rev {sim_int:.1f}% → burden score = {p_fis_burd_sim:.0f}",
+         f"Average (perf + burden) ÷ 2 = ({p_fis_perf_sim:.0f} + {p_fis_burd_sim:.0f}) ÷ 2",
+         f"Revenue flexibility ({sim_flex}) adj. → final <b>{p_fis_sim:.1f}</b>"],
+        p_fis_sim,
+    ))
+    story.append(vsp(4))
+
+    # ── External ─────────────────────────────────────────────────────────────
+    if   sim_gefn <= 50:  _liq, _liq_note = 1, "GEFN ≤50% → liquidity score 1"
+    elif sim_gefn <= 75:  _liq, _liq_note = 2, "GEFN 51–75% → liquidity score 2"
+    elif sim_gefn <= 100: _liq, _liq_note = 3, "GEFN 76–100% → liquidity score 3"
+    elif sim_gefn <= 150: _liq, _liq_note = 4, "GEFN 101–150% → liquidity score 4"
+    else:                 _liq, _liq_note = 5, "GEFN >150% → liquidity score 5"
+    if   sim_niip >= 0:   _dbt, _dbt_note = 1, "NIIP ≥0% → debt position score 1"
+    elif sim_niip > -20:  _dbt, _dbt_note = 2, "NIIP 0 to −20% → debt position score 2"
+    elif sim_niip > -100: _dbt, _dbt_note = 4, "NIIP −20 to −100% → debt position score 4"
+    else:                 _dbt, _dbt_note = 6, "NIIP < −100% → debt position score 6"
+    story.append(_deriv_block(
+        "🌐 External",
+        [_liq_note,
+         _dbt_note,
+         f"Average (liquidity + debt pos.) ÷ 2 = ({_liq} + {_dbt}) ÷ 2 = <b>{p_ext_sim:.1f}</b>"],
+        p_ext_sim,
+    ))
+    story.append(vsp(4))
+
+    # ── Monetary ─────────────────────────────────────────────────────────────
+    if sim_cpi <= 3 and sim_depth > 40:
+        _mon_logic = f"CPI {sim_cpi:.1f}% ≤3% & depth {sim_depth:.0f}% >40% → score 2"
+    elif sim_regime == "Floating" and sim_cpi <= 10:
+        _mon_logic = f"Floating FX & CPI {sim_cpi:.1f}% ≤10% → score 3"
+    else:
+        _mon_logic = f"Fixed/managed regime or high inflation ({sim_cpi:.1f}%) → score 5"
+    story.append(_deriv_block(
+        "🏦 Monetary",
+        [f"FX Regime: {sim_regime} | CPI: {sim_cpi:.1f}% | Financial Depth: {sim_depth:.0f}%",
+         _mon_logic,
+         f"Score: <b>{p_mon_sim:.1f}</b>"],
+        p_mon_sim,
+    ))
+    story.append(vsp(8))
+
+    # Profile & SRM matrix summary
+    profile_data = [
+        ["IE Profile",  f"({p_inst_sim:.1f} + {p_eco_sim:.1f}) ÷ 2",  f"= {res_ie:.2f}"],
+        ["FP Profile",  f"({p_fis_sim:.1f} + {p_ext_sim:.1f} + {p_mon_sim:.1f}) ÷ 3",
+                                                                        f"= {res_fp:.2f}"],
+        ["SRM Matrix",  f"IE {res_ie:.2f}  ×  FP {res_fp:.2f}",       f"→ {sim_rating}"],
+    ]
+    if sim_supp_adj != 0 or sim_cap:
+        _supp_detail = (", ".join(f['factor'] for f in sim_supp_factors)
+                        if sim_supp_factors else sim_cap or "")
+        profile_data.append(
+            ["Supplemental", f"{int(sim_supp_adj):+} notch  ({_supp_detail[:60]})", f"→ {sim_final}"]
+        )
+    prof_tbl = Table(profile_data, colWidths=[3.5*cm, 9.5*cm, 4*cm])
+    prof_tbl.setStyle(TableStyle([
+        ('FONTNAME',    (0,0), (-1,-1), 'Helvetica'),
+        ('FONTNAME',    (2,0), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,0), (-1,-1), 9),
+        ('ALIGN',       (2,0), (-1,-1), 'CENTER'),
+        ('BACKGROUND',  (0, len(profile_data)-1), (-1, len(profile_data)-1),
+                         colors.HexColor("#EEF2FF")),
+        ('BOX',         (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('INNERGRID',   (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ('TOPPADDING',  (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING',(0,0),(-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(prof_tbl)
+    story.append(vsp(12))
+
+    # ── SECTION 3 — BASELINE vs STRESS-TEST ──────────────────────────────────
+    story.append(Paragraph("3. Baseline vs. Stress-Test Scenario", st_h2))
+    story.append(hr())
+
+    def _delta_cell(base, sim):
+        d = sim - base
+        if d == 0:
+            return Paragraph("–", S("NC", fontSize=9, alignment=TA_CENTER, textColor=RL_MGREY))
+        arrow = "▼" if d > 0 else "▲"          # higher score = weaker
+        clr   = "#991b1b" if d > 0 else "#065f46"
+        return Paragraph(f"<font color='{clr}'><b>{arrow} {abs(d):.1f}</b></font>",
+                         S("Dc", fontSize=9, fontName="Helvetica-Bold", alignment=TA_CENTER))
+
+    def _rating_delta(base_r, sim_r):
+        RATING_TO_NUM_LOCAL = {
+            'AAA':16,'AA+':15,'AA':14,'AA-':13,'A+':12,'A':11,'A-':10,
+            'BBB+':9,'BBB':8,'BBB-':7,'BB+':6,'BB':5,'BB-':4,'B+':3,'B':2,'B-':1,'CCC':0
+        }
+        d = RATING_TO_NUM_LOCAL.get(sim_r, 8) - RATING_TO_NUM_LOCAL.get(base_r, 8)
+        if d == 0:
+            return Paragraph("–", S("NC2", fontSize=9, alignment=TA_CENTER, textColor=RL_MGREY))
+        arrow = "▲" if d > 0 else "▼"
+        clr   = "#065f46" if d > 0 else "#991b1b"
+        return Paragraph(f"<font color='{clr}'><b>{arrow} {abs(d)} notch{'es' if abs(d)>1 else ''}</b></font>",
+                         S("Rd", fontSize=9, fontName="Helvetica-Bold", alignment=TA_CENTER))
+
+    _hdr_s = S("CH", fontSize=8, fontName="Helvetica-Bold",
+                textColor=RL_WHITE, alignment=TA_CENTER)
+    cmp_data = [
+        [Paragraph("<b>Pillar / Metric</b>", S("CH2", fontSize=8, fontName="Helvetica-Bold",
+                                                textColor=RL_WHITE)),
+         Paragraph("<b>Baseline</b>",  _hdr_s),
+         Paragraph("<b>Stress-Test</b>", _hdr_s),
+         Paragraph("<b>Change</b>", _hdr_s)],
+        ["🏛 Institutional", f"{s_inst:.1f}",    f"{p_inst_sim:.1f}", _delta_cell(s_inst,    p_inst_sim)],
+        ["📈 Economic",      f"{s_eco:.1f}",     f"{p_eco_sim:.1f}",  _delta_cell(s_eco,     p_eco_sim)],
+        ["💰 Fiscal",        f"{s_fis:.1f}",     f"{p_fis_sim:.1f}",  _delta_cell(s_fis,     p_fis_sim)],
+        ["🌐 External",      f"{s_ext:.1f}",     f"{p_ext_sim:.1f}",  _delta_cell(s_ext,     p_ext_sim)],
+        ["🏦 Monetary",      f"{s_mon:.1f}",     f"{p_mon_sim:.1f}",  _delta_cell(s_mon,     p_mon_sim)],
+        ["IE Profile",       f"{prof_ie:.2f}",   f"{res_ie:.2f}",     _delta_cell(prof_ie,   res_ie)],
+        ["FP Profile",       f"{prof_fp:.2f}",   f"{res_fp:.2f}",     _delta_cell(prof_fp,   res_fp)],
+        ["SRM Rating",       srm_rating,          sim_rating,          _rating_delta(srm_rating,      sim_rating)],
+        ["Final Rating",     final_indicative,    sim_final,           _rating_delta(final_indicative, sim_final)],
+    ]
+    cmp_tbl = Table(cmp_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 5*cm])
+    cmp_style = TableStyle([
+        ('BACKGROUND',    (0,0), (-1,0), RL_NAVY),
+        ('TEXTCOLOR',     (0,0), (-1,0), RL_WHITE),
+        ('FONTSIZE',      (0,0), (-1,-1), 9),
+        ('ALIGN',         (1,0), (-1,-1), 'CENTER'),
+        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ('TOPPADDING',    (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING',   (0,0), (-1,-1), 6),
+        ('BACKGROUND',    (0,6), (-1,7), colors.HexColor("#F1F5F9")),  # IE/FP rows
+        ('BACKGROUND',    (0,8), (-1,9), colors.HexColor("#EEF2FF")),  # rating rows
+        ('FONTNAME',      (0,8), (-1,9), 'Helvetica-Bold'),
+    ])
+    cmp_tbl.setStyle(cmp_style)
+    story.append(cmp_tbl)
+    story.append(vsp(8))
+
+    story.append(Paragraph(
+        "Score scale: 1 = strongest / best | 6 = weakest / most stressed. "
+        "▲ = improvement vs baseline | ▼ = deterioration vs baseline.",
+        st_small))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def _inp_style():
+    return TableStyle([
+        ('BACKGROUND',    (0,0), (-1,0), colors.HexColor("#F1F5F9")),
+        ('FONTSIZE',      (0,0), (-1,-1), 8.5),
+        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+        ('INNERGRID',     (0,0), (-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ('TOPPADDING',    (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING',   (0,0), (-1,-1), 5),
+    ])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
