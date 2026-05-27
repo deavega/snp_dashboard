@@ -7,11 +7,113 @@ from briefing_generator import generate_pdf, generate_pptx, generate_stress_pdf
 import requests
 import io
 import urllib.parse
+import base64 as _b64
+import json as _json
 from datetime import datetime, timezone, timedelta
 
 def now_jakarta():
     """Returns current time in Jakarta timezone (UTC+7)."""
     return datetime.now(timezone.utc) + timedelta(hours=7)
+
+# ============================================================
+# COUNTER REPORT — GitHub Contents API helpers
+# ============================================================
+
+def _cr_cfg():
+    """Return config dict from st.secrets, or None if not configured."""
+    try:
+        gh  = st.secrets.get("github", {})
+        adm = st.secrets.get("admin",  {})
+        if not gh.get("token") or not gh.get("repo"):
+            return None
+        return {
+            "token":    gh["token"],
+            "repo":     gh["repo"],
+            "folder":   gh.get("docs_folder", "counter_reports"),
+            "branch":   gh.get("branch", "main"),
+            "password": adm.get("password", ""),
+        }
+    except Exception:
+        return None
+
+def _cr_api(method, cfg, rel_path, **kw):
+    """Single entry-point for GitHub Contents API calls."""
+    return requests.request(
+        method,
+        f"https://api.github.com/repos/{cfg['repo']}/contents/{rel_path}",
+        headers={
+            "Authorization": f"Bearer {cfg['token']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        timeout=15,
+        **kw,
+    )
+
+def _cr_fetch_index(cfg):
+    """Fetch index.json directly (no cache). Returns (entries, sha_or_None)."""
+    resp = _cr_api("GET", cfg, f"{cfg['folder']}/index.json",
+                   params={"ref": cfg["branch"]})
+    if resp.status_code == 404:
+        return [], None
+    if not resp.ok:
+        return [], None
+    data = resp.json()
+    content = _b64.b64decode(data["content"].replace("\n", "")).decode()
+    return _json.loads(content), data["sha"]
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cr_fetch_index_cached(token, repo, folder, branch):
+    """Cached (60 s TTL) index read — use for display; bypass before writes."""
+    return _cr_fetch_index({"token": token, "repo": repo,
+                            "folder": folder, "branch": branch})
+
+def _cr_push_index(cfg, entries, sha):
+    """Create or update index.json on GitHub. Returns the requests.Response."""
+    payload = {
+        "message": "Update counter_reports index",
+        "content": _b64.b64encode(
+            _json.dumps(entries, indent=2, ensure_ascii=False).encode()
+        ).decode(),
+        "branch": cfg["branch"],
+    }
+    if sha:
+        payload["sha"] = sha
+    return _cr_api("PUT", cfg, f"{cfg['folder']}/index.json", json=payload)
+
+def _cr_upload_doc(cfg, stored_filename, file_bytes):
+    """Upload a document to GitHub. Returns (ok: bool, download_url: str)."""
+    path = f"{cfg['folder']}/{stored_filename}"
+    payload = {
+        "message": f"Upload {stored_filename}",
+        "content": _b64.b64encode(file_bytes).decode(),
+        "branch":  cfg["branch"],
+    }
+    # If file already exists we need its SHA to overwrite
+    check = _cr_api("GET", cfg, path, params={"ref": cfg["branch"]})
+    if check.ok:
+        payload["sha"] = check.json()["sha"]
+    resp = _cr_api("PUT", cfg, path, json=payload)
+    if resp.status_code in (200, 201):
+        dl_url = (f"https://raw.githubusercontent.com"
+                  f"/{cfg['repo']}/{cfg['branch']}/{path}")
+        return True, dl_url
+    return False, ""
+
+def _cr_delete_doc(cfg, stored_filename):
+    """Delete a document file from GitHub. Returns True on success."""
+    if not stored_filename:
+        return False
+    path  = f"{cfg['folder']}/{stored_filename}"
+    check = _cr_api("GET", cfg, path, params={"ref": cfg["branch"]})
+    if not check.ok:
+        return False
+    resp = _cr_api("DELETE", cfg, path, json={
+        "message": f"Delete {stored_filename}",
+        "sha":     check.json()["sha"],
+        "branch":  cfg["branch"],
+    })
+    return resp.status_code == 200
 
 # ==========================================
 # 1. S&P INDICATIVE RATING MATRIX
@@ -671,7 +773,7 @@ if f_macro:
         df = process_full_data(f_macro)
     
     if df is not None:
-        tabs = st.tabs(["📊 National Portfolio", "📉 Peer Comparison", "💡 Recommendation", "📄 Briefing Notes", "🧪 Methodology Simulator"])
+        tabs = st.tabs(["📊 National Portfolio", "📉 Peer Comparison", "💡 Recommendation", "📄 Briefing Notes", "🧪 Methodology Simulator", "📁 Counter Report"])
 
         # ── Load trend data once — available to ALL tabs ──────────────────────
         with st.spinner("Extracting trend data..."):
@@ -3321,6 +3423,352 @@ if f_macro:
                     use_container_width=True,
                 )
                 st.caption(f"📄 {st.session_state.get('_stress_pdf_scenario', '')}")
+
+        # ════════════════════════════════════════════════════════════════
+        # TAB 6 — COUNTER REPORT REPOSITORY
+        # ════════════════════════════════════════════════════════════════
+        with tabs[5]:
+            st.markdown("### 📁 Counter Report Repository")
+            st.caption(
+                "Official counter-analysis documents and position papers published by the research team. "
+                "Documents are stored on GitHub and accessible to all dashboard users."
+            )
+
+            cr_cfg = _cr_cfg()
+
+            # ── Config missing → show setup guide ─────────────────────────────
+            if cr_cfg is None:
+                st.warning(
+                    "⚙️ GitHub storage is not configured. "
+                    "Fill in `.streamlit/secrets.toml` and restart the app."
+                )
+                with st.expander("📖 Setup Guide"):
+                    st.markdown(
+                        "Create (or edit) `.streamlit/secrets.toml` in the project folder "
+                        "with the following content:"
+                    )
+                    st.code("""\
+[github]
+token       = "ghp_xxxxxxxxxxxx"        # Personal access token (repo write scope)
+repo        = "your-org/rating-docs"    # GitHub repo that will host the documents
+docs_folder = "counter_reports"         # Folder inside the repo (auto-created on first upload)
+branch      = "main"
+
+[admin]
+password = "your_secure_password"       # Admin password for upload / edit / delete
+""", language="toml")
+                    st.info(
+                        "The GitHub token needs **Contents: Read & Write** permission "
+                        "on the target repository. "
+                        "Generate one at github.com → Settings → Developer settings → "
+                        "Personal access tokens → Fine-grained tokens."
+                    )
+
+            else:
+                # ── Session state initialisation ──────────────────────────────
+                if "cr_admin"  not in st.session_state:
+                    st.session_state["cr_admin"]  = False
+                if "cr_editing" not in st.session_state:
+                    st.session_state["cr_editing"] = None
+
+                # ── Fetch document list (cached 60 s) ─────────────────────────
+                try:
+                    _cr_entries, _cr_index_sha = _cr_fetch_index_cached(
+                        cr_cfg["token"], cr_cfg["repo"],
+                        cr_cfg["folder"], cr_cfg["branch"],
+                    )
+                except Exception as _e:
+                    st.error(f"Failed to fetch document list from GitHub: {_e}")
+                    _cr_entries, _cr_index_sha = [], None
+
+                _cr_entries = sorted(
+                    _cr_entries,
+                    key=lambda e: e.get("uploaded_at", ""),
+                    reverse=True,
+                )
+
+                # ════════════════════════════════════════════════════════
+                # ADMIN PANEL
+                # ════════════════════════════════════════════════════════
+                with st.expander(
+                    "🔐 Admin Panel",
+                    expanded=st.session_state["cr_admin"],
+                ):
+                    if not st.session_state["cr_admin"]:
+                        pw_col, btn_col = st.columns([3, 1])
+                        with pw_col:
+                            _pw = st.text_input(
+                                "Password", type="password",
+                                key="cr_pw_input",
+                                placeholder="Enter admin password",
+                                label_visibility="collapsed",
+                            )
+                        with btn_col:
+                            if st.button("Login", key="cr_login_btn",
+                                         use_container_width=True):
+                                if _pw and _pw == cr_cfg["password"]:
+                                    st.session_state["cr_admin"] = True
+                                    st.rerun()
+                                else:
+                                    st.error("Incorrect password.")
+                    else:
+                        _adm_top, _adm_logout = st.columns([5, 1])
+                        with _adm_top:
+                            st.success("✅ Logged in as Admin")
+                        with _adm_logout:
+                            if st.button("Logout", key="cr_logout_btn",
+                                         use_container_width=True):
+                                st.session_state["cr_admin"]  = False
+                                st.session_state["cr_editing"] = None
+                                st.rerun()
+
+                        st.divider()
+                        st.markdown("#### ⬆️ Upload New Document")
+
+                        _up_left, _up_right = st.columns([2, 3])
+                        with _up_left:
+                            _cr_file = st.file_uploader(
+                                "Select file",
+                                type=["pdf", "pptx", "ppt"],
+                                key="cr_uploader",
+                                label_visibility="collapsed",
+                            )
+                            if _cr_file:
+                                _fext = _cr_file.name.rsplit(".", 1)[-1].lower()
+                                _ficon = "📊" if _fext in ("pptx", "ppt") else "📄"
+                                st.caption(f"{_ficon} {_cr_file.name} · {_cr_file.size / 1024:.0f} KB")
+
+                        with _up_right:
+                            _cr_title = st.text_input(
+                                "Document title *",
+                                placeholder="e.g. Q1 2026 Counter Analysis — Indonesia",
+                                key="cr_title",
+                            )
+                            _cr_summary = st.text_area(
+                                "Brief summary *",
+                                placeholder=(
+                                    "Describe the key arguments, scope, and conclusions "
+                                    "of this document…"
+                                ),
+                                key="cr_summary",
+                                height=100,
+                            )
+
+                        _can_upload = bool(_cr_file and _cr_title and _cr_title.strip())
+                        if st.button(
+                            "☁️ Upload to GitHub",
+                            key="cr_upload_btn",
+                            type="primary",
+                            use_container_width=True,
+                            disabled=not _can_upload,
+                        ):
+                            with st.spinner("Uploading to GitHub…"):
+                                _ts       = now_jakarta().strftime("%Y%m%d_%H%M%S")
+                                _ext      = _cr_file.name.rsplit(".", 1)[-1].lower()
+                                _stored   = f"{_ts}_{_cr_file.name.replace(' ', '_')}"
+                                _ok, _dl  = _cr_upload_doc(cr_cfg, _stored, _cr_file.getvalue())
+                            if _ok:
+                                with st.spinner("Updating index…"):
+                                    _fe, _fsha = _cr_fetch_index(cr_cfg)
+                                    _fe.append({
+                                        "id":                _stored,
+                                        "title":             _cr_title.strip(),
+                                        "original_filename": _cr_file.name,
+                                        "stored_filename":   _stored,
+                                        "file_type":         _ext,
+                                        "summary":           (_cr_summary or "").strip(),
+                                        "uploaded_at":       now_jakarta().isoformat(),
+                                        "download_url":      _dl,
+                                    })
+                                    _pr = _cr_push_index(cr_cfg, _fe, _fsha)
+                                if _pr.status_code in (200, 201):
+                                    _cr_fetch_index_cached.clear()
+                                    st.success(f"✅ '{_cr_title.strip()}' uploaded successfully.")
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        f"File uploaded but index update failed "
+                                        f"(HTTP {_pr.status_code}). "
+                                        f"Try again or check token permissions."
+                                    )
+                            else:
+                                st.error(
+                                    "Upload failed. Check your GitHub token and "
+                                    "repository settings."
+                                )
+
+                # ════════════════════════════════════════════════════════
+                # DOCUMENT LIST
+                # ════════════════════════════════════════════════════════
+                st.markdown("---")
+
+                if not _cr_entries:
+                    st.info(
+                        "📭 No documents have been published yet. "
+                        "Admin can upload documents via the Admin Panel above."
+                    )
+                else:
+                    _doc_count = len(_cr_entries)
+                    st.markdown(
+                        f"#### 📂 {_doc_count} Published Document"
+                        f"{'s' if _doc_count != 1 else ''}"
+                    )
+
+                    for _entry in _cr_entries:
+                        _eid  = _entry.get("id", "")
+                        _fext = _entry.get("file_type", "pdf").lower()
+                        _is_pdf = _fext not in ("pptx", "ppt")
+                        _tc   = "#dc2626" if _is_pdf else "#2563eb"
+                        _bg   = "#fee2e2" if _is_pdf else "#dbeafe"
+                        _lbl  = "PDF" if _is_pdf else "PPTX"
+                        _ico  = "📄" if _is_pdf else "📊"
+
+                        _raw_dt = _entry.get("uploaded_at", "")
+                        try:
+                            _dt_pretty = datetime.fromisoformat(_raw_dt).strftime(
+                                "%d %b %Y, %H:%M"
+                            )
+                        except Exception:
+                            _dt_pretty = _raw_dt[:10] if _raw_dt else "—"
+
+                        _is_editing = (st.session_state["cr_editing"] == _eid)
+
+                        # ── Document card ──────────────────────────────────────
+                        _card_col, _btn_col = st.columns([10, 1])
+                        with _card_col:
+                            st.markdown(f"""
+                            <div style="padding:16px 20px; border-radius:10px;
+                                        background:#ffffff; border:1px solid #e5e7eb;
+                                        margin-bottom:4px;">
+                                <div style="display:flex; align-items:center;
+                                            gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+                                    <span style="background:{_bg}; color:{_tc};
+                                                 font-weight:700; font-size:11px;
+                                                 padding:3px 9px; border-radius:20px;
+                                                 white-space:nowrap;">
+                                        {_ico} {_lbl}
+                                    </span>
+                                    <span style="font-size:16px; font-weight:700;
+                                                 color:#111827; flex:1;">
+                                        {_entry.get('title',
+                                            _entry.get('original_filename', 'Untitled'))}
+                                    </span>
+                                    <span style="font-size:11px; color:#9ca3af;
+                                                 white-space:nowrap;">
+                                        🕐 {_dt_pretty}
+                                    </span>
+                                </div>
+                                <div style="font-size:13px; color:#4b5563; line-height:1.65;">
+                                    {_entry.get('summary') or '<em style="color:#9ca3af;">No summary provided.</em>'}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        with _btn_col:
+                            _dl_url = _entry.get("download_url", "")
+                            if _dl_url:
+                                st.link_button(
+                                    "⬇️", url=_dl_url,
+                                    use_container_width=True,
+                                    help="Download document",
+                                )
+                            if st.session_state["cr_admin"]:
+                                if st.button(
+                                    "✏️", key=f"cr_edit_{_eid}",
+                                    use_container_width=True,
+                                    help="Edit title & summary",
+                                ):
+                                    st.session_state["cr_editing"] = (
+                                        None if _is_editing else _eid
+                                    )
+                                    st.rerun()
+                                if st.button(
+                                    "🗑️", key=f"cr_del_{_eid}",
+                                    use_container_width=True,
+                                    help="Delete document",
+                                ):
+                                    st.session_state[f"cr_confirm_{_eid}"] = True
+                                    st.rerun()
+
+                        # ── Inline edit form ───────────────────────────────────
+                        if _is_editing and st.session_state["cr_admin"]:
+                            with st.form(key=f"cr_form_{_eid}"):
+                                _new_title = st.text_input(
+                                    "Title",
+                                    value=_entry.get("title", ""),
+                                )
+                                _new_sum = st.text_area(
+                                    "Summary",
+                                    value=_entry.get("summary", ""),
+                                    height=90,
+                                )
+                                _sc, _cc = st.columns(2)
+                                with _sc:
+                                    _save = st.form_submit_button(
+                                        "💾 Save",
+                                        use_container_width=True,
+                                        type="primary",
+                                    )
+                                with _cc:
+                                    _cancel = st.form_submit_button(
+                                        "Cancel",
+                                        use_container_width=True,
+                                    )
+                                if _save:
+                                    _fe2, _fsha2 = _cr_fetch_index(cr_cfg)
+                                    for _fe_item in _fe2:
+                                        if _fe_item.get("id") == _eid:
+                                            _fe_item["title"]   = _new_title.strip()
+                                            _fe_item["summary"] = _new_sum.strip()
+                                            break
+                                    _pr2 = _cr_push_index(cr_cfg, _fe2, _fsha2)
+                                    if _pr2.status_code in (200, 201):
+                                        _cr_fetch_index_cached.clear()
+                                        st.session_state["cr_editing"] = None
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to save — check token permissions.")
+                                if _cancel:
+                                    st.session_state["cr_editing"] = None
+                                    st.rerun()
+
+                        # ── Delete confirmation ────────────────────────────────
+                        if st.session_state.get(f"cr_confirm_{_eid}") and st.session_state["cr_admin"]:
+                            st.warning(
+                                f"⚠️ Permanently delete **"
+                                f"{_entry.get('title', 'this document')}**? "
+                                "This cannot be undone."
+                            )
+                            _yc, _nc = st.columns(2)
+                            with _yc:
+                                if st.button(
+                                    "Yes, delete",
+                                    key=f"cr_delyes_{_eid}",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    with st.spinner("Deleting…"):
+                                        _cr_delete_doc(
+                                            cr_cfg,
+                                            _entry.get("stored_filename", ""),
+                                        )
+                                        _fe3, _fsha3 = _cr_fetch_index(cr_cfg)
+                                        _fe3 = [
+                                            x for x in _fe3
+                                            if x.get("id") != _eid
+                                        ]
+                                        _cr_push_index(cr_cfg, _fe3, _fsha3)
+                                        _cr_fetch_index_cached.clear()
+                                        st.session_state.pop(f"cr_confirm_{_eid}", None)
+                                        st.rerun()
+                            with _nc:
+                                if st.button(
+                                    "Cancel",
+                                    key=f"cr_delno_{_eid}",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state.pop(f"cr_confirm_{_eid}", None)
+                                    st.rerun()
 
 else:
     st.info("👋 Welcome! Please upload the S&P Macro dataset to begin. Reference WGI data will be loaded automatically from the cloud.")
