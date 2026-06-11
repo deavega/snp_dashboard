@@ -58,15 +58,16 @@ The engine computes specific geometric and moving averages strictly tailored to 
 ---
 
 ## 🗂️ Project Structure
-snp_dashboard/
-├── snp_dashboard.py         # Main analytical application code & UI tabs
-├── briefing_generator.py    # Report rendering engine (ReportLab PDF / python-pptx)
-├── requirements.txt         # Package dependencies
-├── assets/
-│   ├── background.png       # Branding header overlay asset
-│   └── srm_matrix.png       # S&P Global Sovereign Matrix lookup sheet image
-└── data/
-└── snp_data.xlsx        # Pre-packaged baseline fallback S&P macro workbook
+
+* **snp_dashboard/**
+  * `snp_dashboard.py` — Main analytical application code & UI tabs
+  * `briefing_generator.py` — Report rendering engine (ReportLab PDF / python-pptx)
+  * `requirements.txt` — Package dependencies
+  * **assets/**
+    * `background.png` — Branding header overlay asset
+    * `srm_matrix.png` — S&P Global Sovereign Matrix lookup sheet image
+  * **data/**
+    * `snp_data.xlsx` — Pre-packaged baseline fallback S&P macro workbook
 
 ---
 
@@ -110,5 +111,5 @@ reportlab
 python-pptx
 
 ---
-### ⚠️ Disclaimer
+## ⚠️ Disclaimer
 This dashboard functions strictly as an independent analytical simulation environment. It does not issue official credit ratings. All calculated outputs are model-derived proxy estimations intended solely for macroeconomic scenario modeling, stress-testing, and academic research purposes.
