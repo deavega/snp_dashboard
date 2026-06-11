@@ -73,32 +73,31 @@ snp_dashboard/
 ## 🛠️ Setup & Secrets
 
 ### Local Installation
-# Clone project repo
+#### Clone project repo
 git clone [https://github.com/your-org/snp_dashboard.git](https://github.com/your-org/snp_dashboard.git)
 cd snp_dashboard
 
-# Install requirements
+#### Install requirements
 pip install -r requirements.txt
 
-# Launch application locally
+#### Launch application locally
 streamlit run snp_dashboard.py
 
-# Main Application Gate
+#### Main Application Gate
 APP_PASSCODE = "SecureDashboardLoginPassword"
 
-# GitHub API Storage Broker Setup
+#### GitHub API Storage Broker Setup
 [github]
 token = "ghp_GitHubPersonalAccessTokenWithRepoWriteScope"
 repo = "github-username-or-org/target-repository-name"
 docs_folder = "counter_reports"
 branch = "main"
 
-# Repository Administrator Credentials
+#### Repository Administrator Credentials
 [admin]
 password = "SecureAdminPanelPassword"
 
----
-### Local Installation
+#### Dependencies
 streamlit
 pandas
 numpy
