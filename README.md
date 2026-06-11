@@ -39,7 +39,7 @@ This dashboard replicates and automates the **S&P Global Sovereign Rating Method
 
 ### 📄 Briefing Notes & Mobile Distribution
 - **Dual-Format Compilation**: Instant server-side rendering of comprehensive **PDF Briefings** (via ReportLab) and editable **PowerPoint Presentation Decks** (via python-pptx).
-- **WhatsApp Cloud Sharing integration**: Automated public link generation via temporary file-hosting microservices (`tmpfiles.org` / `file.io`) with localized preset message formatting for immediate WhatsApp text forwarding.
+- **WhatsApp Cloud Sharing Integration**: Automated public link generation via temporary file-hosting microservices (`tmpfiles.org` / `file.io`) with localized preset message formatting for immediate WhatsApp text forwarding.
 
 ### 📁 Counter Report Repository (GitHub-backed Storage)
 - **Persistent Cloud Archival**: A production-grade Document Management System synced directly with a GitHub contents repository using a secure authenticated baseline JSON index (`index.json`).
@@ -50,7 +50,7 @@ This dashboard replicates and automates the **S&P Global Sovereign Rating Method
 ## 📖 Methodology & Scoring Engine
 
 The engine computes specific geometric and moving averages strictly tailored to rating criteria document definitions:
-- **Economic Profile**: Evaluates current 2024 GDP per Capita brackets alongside a **10-year weighted trend growth average** ($6\text{ historical} + 1\text{ estimate} + 3\text{ forecast years}$).
+- **Economic Profile**: Evaluates GDP per Capita thresholds alongside a **10-year weighted trend growth average** (6 historical + 1 estimate + 3 forecast years).
 - **Fiscal Profile**: Evaluates **3-year average General Government Balances** against a dynamic matrix intersection of current-year Gross/Net Debt and Interest-to-Revenue ratios.
 - **External Profile**: Aggregates a **3-year Gross External Financing Needs (GEFN)** average combined with current Net International Investment Positions (NIIP).
 - **Monetary Profile**: Processes a **5-year historical price stability cycle average** calibrated against local financial depth thresholds.
@@ -58,3 +58,58 @@ The engine computes specific geometric and moving averages strictly tailored to 
 ---
 
 ## 🗂️ Project Structure
+snp_dashboard/
+├── snp_dashboard.py         # Main analytical application code & UI tabs
+├── briefing_generator.py    # Report rendering engine (ReportLab PDF / python-pptx)
+├── requirements.txt         # Package dependencies
+├── assets/
+│   ├── background.png       # Branding header overlay asset
+│   └── srm_matrix.png       # S&P Global Sovereign Matrix lookup sheet image
+└── data/
+└── snp_data.xlsx        # Pre-packaged baseline fallback S&P macro workbook
+
+---
+
+## 🛠️ Setup & Secrets
+
+### Local Installation
+# Clone project repo
+git clone [https://github.com/your-org/snp_dashboard.git](https://github.com/your-org/snp_dashboard.git)
+cd snp_dashboard
+
+# Install requirements
+pip install -r requirements.txt
+
+# Launch application locally
+streamlit run snp_dashboard.py
+
+# Main Application Gate
+APP_PASSCODE = "SecureDashboardLoginPassword"
+
+# GitHub API Storage Broker Setup
+[github]
+token = "ghp_GitHubPersonalAccessTokenWithRepoWriteScope"
+repo = "github-username-or-org/target-repository-name"
+docs_folder = "counter_reports"
+branch = "main"
+
+# Repository Administrator Credentials
+[admin]
+password = "SecureAdminPanelPassword"
+
+---
+### Local Installation
+streamlit
+pandas
+numpy
+plotly
+requests
+gdown
+openpyxl
+matplotlib
+reportlab
+python-pptx
+
+---
+### ⚠️ Disclaimer
+This dashboard functions strictly as an independent analytical simulation environment. It does not issue official credit ratings. All calculated outputs are model-derived proxy estimations intended solely for macroeconomic scenario modeling, stress-testing, and academic research purposes.
