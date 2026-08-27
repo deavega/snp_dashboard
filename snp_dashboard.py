@@ -755,18 +755,51 @@ else:
 
 st.markdown("""
 <style>
-    .stTabs [data-baseweb="tab"] p {
-        font-size: 2.1rem !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.01em;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 16px 28px !important;
-        gap: 10px;
-        min-height: 64px;
-    }
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
+        gap: 10px;
+        flex-wrap: wrap;
+        border-bottom: none !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"],
+    .stTabs [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+    .stTabs [data-testid="stTab"] {
+        height: auto !important;
+        padding: 18px 30px !important;
+        background-color: #EEF2FF !important;
+        border: 2px solid #C7D2FE !important;
+        border-radius: 14px !important;
+        transition: all 0.15s ease-in-out;
+    }
+    .stTabs [data-testid="stTab"]:hover {
+        background-color: #DBE4FF !important;
+        border-color: #1E3A8A !important;
+        transform: translateY(-2px);
+    }
+    .stTabs [data-testid="stTab"][aria-selected="true"] {
+        background-color: #1E3A8A !important;
+        border-color: #1E3A8A !important;
+        box-shadow: 0 8px 20px rgba(30, 58, 138, 0.45);
+    }
+    .stTabs [data-testid="stTab"] p {
+        font-size: 1.75rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.01em;
+        color: #1E3A8A !important;
+        margin: 0 !important;
+    }
+    .stTabs [data-testid="stTab"][aria-selected="true"] p {
+        color: #FFFFFF !important;
+    }
+    .stTabs [data-testid="stTab"] [data-testid="stIconMaterial"] {
+        font-size: 2rem !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        color: #1E3A8A !important;
+    }
+    .stTabs [data-testid="stTab"][aria-selected="true"] [data-testid="stIconMaterial"] {
+        color: #FFFFFF !important;
     }
 </style>
 """, unsafe_allow_html=True)
