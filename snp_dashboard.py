@@ -756,8 +756,13 @@ else:
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"] p {
-        font-size: 1.2rem !important;
+        font-size: 1.5rem !important;
         font-weight: 700 !important;
+        letter-spacing: 0.01em;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px !important;
+        gap: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -821,7 +826,14 @@ if f_macro:
         df = process_full_data(f_macro)
     
     if df is not None:
-        tabs = st.tabs(["📊 National Portfolio", "📉 Peer Comparison", "💡 Recommendation", "📄 Briefing Notes", "🧪 Methodology Simulator", "📁 Counter Report"])
+        tabs = st.tabs([
+            ":material/dashboard: National Portfolio",
+            ":material/compare_arrows: Peer Comparison",
+            ":material/lightbulb: Recommendation",
+            ":material/description: Briefing Notes",
+            ":material/speed: Methodology Simulator",
+            ":material/folder: Counter Report",
+        ])
 
         # ── Load trend data once — available to ALL tabs ──────────────────────
         with st.spinner("Extracting trend data..."):
