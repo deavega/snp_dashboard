@@ -1153,9 +1153,23 @@ if f_macro:
             # ── ECONOMIC ──────────────────────────────────────────────
             with pillar_tabs[0]:
                 col1, col2, col3 = st.columns(3)
-                
+
                 with col1:
                     st.metric("GDP per Capita (USD)", f"${r['GDP_PC']:,.0f}")
+
+                with col2:
+                    st.metric("Real GDP Growth (10-yr avg)", f"{_mi['growth']:.1f}%",
+                              delta=f"{_mi['growth'] - r['Growth']:+.1f}% vs current est. ({r['Growth']:.1f}%)")
+
+                with col3:
+                    st.metric("Economic Score", f"{s_eco:.2f} / 6.00")
+                    score_pct = (1 - (s_eco - 1) / 5) * 100
+                    st.progress(score_pct / 100)
+                    st.caption(f"Pillar strength: {score_pct:.0f}% (higher = better)")
+
+                scol1, scol2, scol3 = st.columns(3)
+
+                with scol1:
                     if r['GDP_PC'] > 48000:
                         st.success("🟢 High Income — Strong creditworthiness anchor")
                     elif r['GDP_PC'] > 20000:
@@ -1164,10 +1178,8 @@ if f_macro:
                         st.warning("🟡 Lower-Middle Income — Vulnerability to shocks")
                     else:
                         st.error("🔴 Low Income — Significant structural weakness")
-                
-                with col2:
-                    st.metric("Real GDP Growth (10-yr avg)", f"{_mi['growth']:.1f}%",
-                              delta=f"{_mi['growth'] - r['Growth']:+.1f}% vs current est. ({r['Growth']:.1f}%)")
+
+                with scol2:
                     if _mi['growth'] > 5:
                         st.success("🟢 High Growth — Positive rating momentum")
                     elif _mi['growth'] > 3:
@@ -1176,13 +1188,7 @@ if f_macro:
                         st.warning("🟡 Low Growth — Limited fiscal space")
                     else:
                         st.error("🔴 Contraction — Severe credit pressure")
-                
-                with col3:
-                    st.metric("Economic Score", f"{s_eco:.2f} / 6.00")
-                    score_pct = (1 - (s_eco - 1) / 5) * 100
-                    st.progress(score_pct / 100)
-                    st.caption(f"Pillar strength: {score_pct:.0f}% (higher = better)")
-                
+
                 st.divider()
                 st.markdown("**S&P Assessment Logic — Economic**")
                 st.markdown(f"""
@@ -1202,16 +1208,28 @@ if f_macro:
                     st.metric("GEFN (3-yr avg, % CAR)", f"{_mi['gefn']:.1f}%",
                               delta=f"{_mi['gefn'] - r['GEFN']:+.1f}% vs current est. ({r['GEFN']:.1f}%)")
                     st.metric("Liquidity Score", f"{s_liq:.1f} / 6.0")
+
+                with col2:
+                    st.metric("NIIP (% of GDP)", f"{r['NIIP_CAR']:.1f}%")
+                    st.metric("Debt Position Score", f"{s_debt_pos:.1f} / 6.0")
+
+                with col3:
+                    st.metric("Reserves (Months of CXP)", f"{r['Reserves']:.1f} mo")
+                    st.metric("External Score", f"{s_ext_full:.2f} / 6.00")
+                    score_pct = (1 - (s_ext_full - 1) / 5) * 100
+                    st.progress(score_pct / 100)
+
+                scol1, scol2, scol3 = st.columns(3)
+
+                with scol1:
                     if _mi['gefn'] <= 50:
                         st.success("🟢 Low external financing need")
                     elif _mi['gefn'] <= 75:
                         st.info("🔵 Moderate — manageable rollover risk")
                     else:
                         st.error("🔴 High GEFN — elevated rollover vulnerability")
-                
-                with col2:
-                    st.metric("NIIP (% of GDP)", f"{r['NIIP_CAR']:.1f}%")
-                    st.metric("Debt Position Score", f"{s_debt_pos:.1f} / 6.0")
+
+                with scol2:
                     if r['NIIP_CAR'] >= 0:
                         st.success("🟢 Net creditor position")
                     elif r['NIIP_CAR'] > -20:
@@ -1220,17 +1238,13 @@ if f_macro:
                         st.warning("🟡 Moderate net debtor position")
                     else:
                         st.error("🔴 Large net debtor — structural vulnerability")
-                
-                with col3:
-                    st.metric("Reserves (Months of CXP)", f"{r['Reserves']:.1f} mo")
-                    st.metric("External Score", f"{s_ext_full:.2f} / 6.00")
-                    score_pct = (1 - (s_ext_full - 1) / 5) * 100
-                    st.progress(score_pct / 100)
+
+                with scol3:
                     if r['Reserves'] > 6:
                         st.success("🟢 Adequate reserve buffer")
                     else:
                         st.warning("🟡 Below 6-month threshold")
-                
+
                 st.divider()
                 st.markdown("**S&P Assessment Logic — External**")
                 st.markdown(f"""
@@ -1251,30 +1265,36 @@ if f_macro:
                     st.metric("Fiscal Balance (3-yr avg, % GDP)", f"{_mi['balance']:.1f}%",
                               delta=f"{_mi['balance'] - r['Balance']:+.1f}% vs current est. ({r['Balance']:.1f}%)")
                     st.metric("Performance Score", f"{s_perf:.1f} / 6.0")
+
+                with col2:
+                    st.metric("Debt-to-GDP (%)", f"{r['Debt_GDP']:.1f}%")
+                    st.metric("Interest-to-Revenue (%)", f"{r['Int_Rev']:.1f}%")
+                    st.metric("Burden Score", f"{s_burd:.1f} / 6.0")
+
+                with col3:
+                    st.metric("Fiscal Score", f"{s_fis_full:.2f} / 6.00")
+                    score_pct = (1 - (s_fis_full - 1) / 5) * 100
+                    st.progress(score_pct / 100)
+                    st.caption(f"Pillar strength: {score_pct:.0f}%")
+
+                scol1, scol2, scol3 = st.columns(3)
+
+                with scol1:
                     if _mi['balance'] >= 0:
                         st.success("🟢 Surplus — fiscal consolidation achieved")
                     elif _mi['balance'] > -3:
                         st.info("🔵 Deficit within -3% — manageable")
                     else:
                         st.error("🔴 Deficit exceeds -3% — fiscal pressure")
-                
-                with col2:
-                    st.metric("Debt-to-GDP (%)", f"{r['Debt_GDP']:.1f}%")
-                    st.metric("Interest-to-Revenue (%)", f"{r['Int_Rev']:.1f}%")
-                    st.metric("Burden Score", f"{s_burd:.1f} / 6.0")
+
+                with scol2:
                     if r['Debt_GDP'] <= 45 and r['Int_Rev'] <= 15:
                         st.success("🟢 Low debt burden")
                     elif r['Debt_GDP'] <= 60:
                         st.warning("🟡 Moderate debt — watch interest costs")
                     else:
                         st.error("🔴 High debt burden — crowd-out risk")
-                
-                with col3:
-                    st.metric("Fiscal Score", f"{s_fis_full:.2f} / 6.00")
-                    score_pct = (1 - (s_fis_full - 1) / 5) * 100
-                    st.progress(score_pct / 100)
-                    st.caption(f"Pillar strength: {score_pct:.0f}%")
-                
+
                 st.divider()
                 st.markdown("**S&P Assessment Logic — Fiscal**")
                 st.markdown(f"""
@@ -1293,6 +1313,19 @@ if f_macro:
                 with col1:
                     st.metric("CPI Inflation (5-yr avg)", f"{_mi['cpi']:.1f}%",
                               delta=f"{_mi['cpi'] - r['CPI']:+.1f}% vs current est. ({r['CPI']:.1f}%)")
+
+                with col2:
+                    st.metric("Financial Depth (% GDP)", f"{r['Fin_Depth']:.1f}%")
+
+                with col3:
+                    st.metric("Monetary Score", f"{s_mon:.2f} / 6.00")
+                    score_pct = (1 - (s_mon - 1) / 5) * 100
+                    st.progress(score_pct / 100)
+                    st.caption(f"Pillar strength: {score_pct:.0f}%")
+
+                scol1, scol2, scol3 = st.columns(3)
+
+                with scol1:
                     if _mi['cpi'] <= 3:
                         st.success("🟢 Price stability achieved")
                     elif _mi['cpi'] <= 6:
@@ -1301,22 +1334,15 @@ if f_macro:
                         st.warning("🟡 Elevated inflation — credibility at risk")
                     else:
                         st.error("🔴 High inflation — monetary instability")
-                
-                with col2:
-                    st.metric("Financial Depth (% GDP)", f"{r['Fin_Depth']:.1f}%")
+
+                with scol2:
                     if r['Fin_Depth'] > 40:
                         st.success("🟢 Deep financial market")
                     elif r['Fin_Depth'] > 20:
                         st.info("🔵 Moderate financial depth")
                     else:
                         st.warning("🟡 Shallow — limited monetary transmission")
-                
-                with col3:
-                    st.metric("Monetary Score", f"{s_mon:.2f} / 6.00")
-                    score_pct = (1 - (s_mon - 1) / 5) * 100
-                    st.progress(score_pct / 100)
-                    st.caption(f"Pillar strength: {score_pct:.0f}%")
-                
+
                 st.divider()
                 st.markdown("**S&P Assessment Logic — Monetary**")
                 st.markdown(f"""
