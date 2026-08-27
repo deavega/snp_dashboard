@@ -9,7 +9,7 @@
 
 **A professional sovereign credit rating analytics platform aligned with S&P Global Methodology**
 
-[🚀 **Launch Dashboard**](https://dashboardspp.cloud) · [📖 Methodology](#-methodology) · [✨ Features](#-features) · [🛠️ Setup & Secrets](#%EF%B8%8F-setup--secrets)
+[🚀 **Launch Dashboard**](https://snp-dashboard.streamlit.app/) · [📖 Methodology](#-methodology) · [✨ Features](#-features) · [🛠️ Setup & Secrets](#%EF%B8%8F-setup--secrets)
 
 ---
 
