@@ -766,10 +766,10 @@ st.markdown("""
     }
     .stTabs [data-testid="stTab"] {
         height: auto !important;
-        padding: 18px 30px !important;
+        padding: 9px 15px !important;
         background-color: #EEF2FF !important;
         border: 2px solid #C7D2FE !important;
-        border-radius: 14px !important;
+        border-radius: 10px !important;
         transition: all 0.15s ease-in-out;
     }
     .stTabs [data-testid="stTab"]:hover {
@@ -783,7 +783,7 @@ st.markdown("""
         box-shadow: 0 8px 20px rgba(30, 58, 138, 0.45);
     }
     .stTabs [data-testid="stTab"] p {
-        font-size: 1.75rem !important;
+        font-size: 0.9rem !important;
         font-weight: 800 !important;
         letter-spacing: 0.01em;
         color: #1E3A8A !important;
@@ -793,9 +793,9 @@ st.markdown("""
         color: #FFFFFF !important;
     }
     .stTabs [data-testid="stTab"] [data-testid="stIconMaterial"] {
-        font-size: 2rem !important;
-        width: 2rem !important;
-        height: 2rem !important;
+        font-size: 1rem !important;
+        width: 1rem !important;
+        height: 1rem !important;
         color: #1E3A8A !important;
     }
     .stTabs [data-testid="stTab"][aria-selected="true"] [data-testid="stIconMaterial"] {
