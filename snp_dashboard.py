@@ -801,6 +801,13 @@ st.markdown("""
     .stTabs [data-testid="stTab"][aria-selected="true"] [data-testid="stIconMaterial"] {
         color: #FFFFFF !important;
     }
+
+    /* Markdown table headers (the many "| Factor | Value | ... |" tables) */
+    div[data-testid="stMarkdownContainer"] table thead th {
+        background-color: #1E3A8A !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 st.write("---")
@@ -991,19 +998,38 @@ if f_macro:
             
 
             # ── KPI metrics ──────────────────────────────────────────────────
+            def _kpi_box(col, label, value, sub, bg, border):
+                col.markdown(f"""
+                <div style="text-align:center; padding:16px 10px; border-radius:10px;
+                            background:{bg}; border-left:5px solid {border}; height:100%;">
+                    <div style="font-size:12px; font-weight:700; color:#475569;
+                                text-transform:uppercase; letter-spacing:0.03em;">{label}</div>
+                    <div style="font-size:26px; font-weight:800; color:#1e293b; margin:6px 0 2px;">{value}</div>
+                    <div style="font-size:12px; font-weight:600; color:{border};">{sub}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            supp_sub    = f"{int(supp_adj):+} notch" if supp_adj != 0 else "No adjustment"
+            supp_bg     = "#d1fae5" if supp_adj > 0 else ("#fee2e2" if supp_adj < 0 else "#EFF6FF")
+            supp_border = "#10b981" if supp_adj > 0 else ("#ef4444" if supp_adj < 0 else "#1E3A8A")
+
+            residual_sub    = ("Upgrade uplift" if residual_qo > 0
+                                else ("Downgrade drag" if residual_qo < 0 else "No residual"))
+            residual_bg     = "#d1fae5" if residual_qo > 0 else ("#fee2e2" if residual_qo < 0 else "#EFF6FF")
+            residual_border = "#10b981" if residual_qo > 0 else ("#ef4444" if residual_qo < 0 else "#1E3A8A")
+
+            factors_triggered = len(supp_factors)
+            factors_sub    = "⚠️ Cap applied" if cap_note else ("Watch" if factors_triggered else "No cap")
+            factors_bg     = "#fee2e2" if cap_note else ("#fef3c7" if factors_triggered else "#d1fae5")
+            factors_border = "#ef4444" if cap_note else ("#f59e0b" if factors_triggered else "#10b981")
+
             m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("SRM Matrix Output", srm_rating)
-            m2.metric("After Supplemental",
-                      final_indicative,
-                      delta=f"{int(supp_adj):+} notch" if supp_adj != 0 else "No adj.")
-            m3.metric("Official S&P Rating", r['Actual_Rating'])
-            m4.metric("Residual ±1 Notch",
-                      f"{int(residual_qo):+}",
-                      delta=int(residual_qo), delta_color="normal")
-            m5.metric("Supplemental Factors",
-                      f"{len(supp_factors)} triggered",
-                      delta="⚠️ Cap applied" if cap_note else "No cap")
-            
+            _kpi_box(m1, "SRM Matrix Output", srm_rating, "Model-derived", "#EFF6FF", "#1E3A8A")
+            _kpi_box(m2, "After Supplemental", final_indicative, supp_sub, supp_bg, supp_border)
+            _kpi_box(m3, "Official S&P Rating", r['Actual_Rating'], "Live rating", "#F5F3FF", "#7C3AED")
+            _kpi_box(m4, "Residual ±1 Notch", f"{int(residual_qo):+}", residual_sub, residual_bg, residual_border)
+            _kpi_box(m5, "Supplemental Factors", f"{factors_triggered} triggered", factors_sub, factors_bg, factors_border)
+
             # ── SUPPLEMENTAL ADJUSTMENT FACTORS DISPLAY ───────────────────────
             st.markdown("#### ⚡ Supplemental Adjustment Factors")
             st.caption(
@@ -1218,6 +1244,7 @@ if f_macro:
                     st.metric("External Score", f"{s_ext_full:.2f} / 6.00")
                     score_pct = (1 - (s_ext_full - 1) / 5) * 100
                     st.progress(score_pct / 100)
+                    st.caption(f"Pillar strength: {score_pct:.0f}%")
 
                 scol1, scol2, scol3 = st.columns(3)
 
