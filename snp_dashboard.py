@@ -727,21 +727,21 @@ if os.path.exists(HEADER_IMG_PATH):
         margin-bottom: 16px;
         position: relative;
     ">
-        <!-- Dark overlay for text readability -->
+        <!-- Light overlay for text readability -->
         <div style="
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(15, 30, 80, 0.55);
+            background: rgba(15, 30, 80, 0.22);
             border-radius: 12px;
         "></div>
         <!-- Text on top of overlay -->
         <div style="position: relative; z-index: 1; text-align: center;">
             <h1 style="color: #FFFFFF; font-size: 2.4rem; font-weight: 800;
-                       margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+                       margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,0.7);">
                 Sovereign Rating Monitoring
             </h1>
             <h4 style="color: #CADCFC; font-size: 1.1rem; font-weight: 400;
-                       margin: 8px 0 0 0; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">
+                       margin: 8px 0 0 0; text-shadow: 0 1px 6px rgba(0,0,0,0.6);">
                 Based on S&amp;P Global Methodology
             </h4>
         </div>
@@ -756,13 +756,17 @@ else:
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"] p {
-        font-size: 1.5rem !important;
+        font-size: 2.1rem !important;
         font-weight: 700 !important;
         letter-spacing: 0.01em;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px !important;
-        gap: 8px;
+        padding: 16px 28px !important;
+        gap: 10px;
+        min-height: 64px;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
