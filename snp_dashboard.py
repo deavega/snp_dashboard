@@ -1004,7 +1004,7 @@ if f_macro:
                             background:{bg}; border-left:5px solid {border}; height:100%;">
                     <div style="font-size:12px; font-weight:700; color:#475569;
                                 text-transform:uppercase; letter-spacing:0.03em;">{label}</div>
-                    <div style="font-size:26px; font-weight:800; color:#1e293b; margin:6px 0 2px;">{value}</div>
+                    <div style="font-size:22px; font-weight:800; color:#1e293b; margin:6px 0 2px;">{value}</div>
                     <div style="font-size:12px; font-weight:600; color:{border};">{sub}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1476,7 +1476,7 @@ if f_macro:
                 col.markdown(f"""
                 <div style="text-align:center; padding:14px; border-radius:8px; border: 1px solid #ddd;">
                     <div style="font-size:15px; color:#444; font-weight:600;">{name}</div>
-                    <div style="font-size:30px; font-weight:bold; color:{color};">{score:.1f}</div>
+                    <div style="font-size:22px; font-weight:bold; color:{color};">{score:.1f}</div>
                     <div style="font-size:13px; color:#777;">/ 6.0 · {profile}</div>
                     <div style="font-size:13px; color:{color}; font-weight:600;">{strength:.0f}% strength</div>
                 </div>
@@ -2406,7 +2406,7 @@ if f_macro:
             st.markdown(f"""
             <div style="padding:16px 20px; border-radius:10px; background:{traj_bg};
                         border-left:5px solid {traj_color}; margin-bottom:20px;">
-                <div style="font-size:16px; color:{traj_color}; font-weight:700;
+                <div style="font-size:15px; color:{traj_color}; font-weight:700;
                             margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
                     Rating Trajectory: {trajectory.title()}
                 </div>
@@ -2484,7 +2484,7 @@ if f_macro:
                 <div style="text-align:center; padding:14px; border-radius:10px; background:{bg}; border: 1px solid {fg}22;">
                     <div style="font-size:22px;">{pillar_icons[name]}</div>
                     <div style="font-size:12px; color:#555; margin:4px 0;">{name}</div>
-                    <div style="font-size:26px; font-weight:800; color:{fg};">{score:.1f}</div>
+                    <div style="font-size:22px; font-weight:800; color:{fg};">{score:.1f}</div>
                     <div style="font-size:11px; color:{fg}; font-weight:600;">{label}</div>
                     <div style="font-size:11px; color:#888;">{strength_pct:.0f}% strength</div>
                 </div>
@@ -2834,7 +2834,7 @@ if f_macro:
                         <div style="padding:16px; border-radius:10px; background:{strength_bg};
                                     border-left:5px solid {strength_color}; margin-bottom:14px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <div style="font-size:16px; font-weight:700; color:{strength_color};">
+                                <div style="font-size:15px; font-weight:700; color:{strength_color};">
                                     #{i} ⚖️ {factor}
                                 </div>
                                 <div style="display:flex; gap:8px; align-items:center;">
@@ -2875,7 +2875,7 @@ if f_macro:
                         <div style="font-size:15px; font-weight:700; color:white; margin-bottom:8px;">
                             🎯 Overall QO Strategy for {target}
                         </div>
-                        <div style="font-size:14px; color:#CADCFC; line-height:1.8;">
+                        <div style="font-size:13px; color:#CADCFC; line-height:1.8;">
                             Based on peer comparison, the strongest QO arguments centre on
                             <b style="color:white;">{', '.join(top_factors)}</b>.
                             In the rating committee dialogue, lead with the
@@ -2926,7 +2926,7 @@ if f_macro:
                         st.markdown(f"""
                         <div style="padding:16px; border-radius:10px; background:#f0f4ff;
                                     border-left:5px solid {impact_color}; margin-bottom:14px;">
-                            <div style="font-size:16px; font-weight:700; color:#1e3a8a;">
+                            <div style="font-size:15px; font-weight:700; color:#1e3a8a;">
                                 ⚖️ {opp['factor']}
                                 <span style="font-size:13px; font-weight:700; color:{impact_color};
                                              background:{impact_color}22; padding:3px 10px;
@@ -2954,7 +2954,7 @@ if f_macro:
             with traj_col1:
                 st.markdown(f"""
                 <div style="text-align:center; padding:16px; border-radius:10px; background:#d1fae5;">
-                    <div style="font-size:32px; font-weight:800; color:#065f46;">{upgrade_count}</div>
+                    <div style="font-size:22px; font-weight:800; color:#065f46;">{upgrade_count}</div>
                     <div style="font-size:13px; color:#047857;">Strong Signals</div>
                     <div style="font-size:11px; color:#6ee7b7;">Support current or higher rating</div>
                 </div>
@@ -2963,7 +2963,7 @@ if f_macro:
             with traj_col2:
                 st.markdown(f"""
                 <div style="text-align:center; padding:16px; border-radius:10px; background:#fef3c7;">
-                    <div style="font-size:32px; font-weight:800; color:#78350f;">{moderate_count}</div>
+                    <div style="font-size:22px; font-weight:800; color:#78350f;">{moderate_count}</div>
                     <div style="font-size:13px; color:#92400e;">Watch Areas</div>
                     <div style="font-size:11px; color:#fcd34d;">Monitor for deterioration</div>
                 </div>
@@ -2972,7 +2972,7 @@ if f_macro:
             with traj_col3:
                 st.markdown(f"""
                 <div style="text-align:center; padding:16px; border-radius:10px; background:#fee2e2;">
-                    <div style="font-size:32px; font-weight:800; color:#991b1b;">{weakness_count}</div>
+                    <div style="font-size:22px; font-weight:800; color:#991b1b;">{weakness_count}</div>
                     <div style="font-size:13px; color:#b91c1c;">Weak Signals</div>
                     <div style="font-size:11px; color:#fca5a5;">Downgrade pressure if unaddressed</div>
                 </div>
@@ -3547,8 +3547,8 @@ if f_macro:
             # ── Rating derivation flow ────────────────────────────────────────
             st.markdown(f"""
             <div style="text-align:center; margin-bottom:12px;">
-                <span style="font-size:14px; color:#64748B;">SRM Matrix</span><br>
-                <span style="font-size:28px; font-weight:800; color:#6366f1;">{sim_rating}</span>
+                <span style="font-size:13px; color:#64748B;">SRM Matrix</span><br>
+                <span style="font-size:20px; font-weight:800; color:#6366f1;">{sim_rating}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -3559,7 +3559,7 @@ if f_macro:
                         After Supplemental Adj. ({int(sim_supp_adj):+} notch)
                         {'&nbsp;|&nbsp;🚧 ' + sim_cap if sim_cap else ''}
                     </span><br>
-                    <span style="font-size:36px; font-weight:800; color:#10B981;">{sim_final}</span>
+                    <span style="font-size:24px; font-weight:800; color:#10B981;">{sim_final}</span>
                 </div>
                 """, unsafe_allow_html=True)
             else:
@@ -3568,7 +3568,7 @@ if f_macro:
                     <span style="font-size:13px; color:#64748B;">
                         No supplemental adjustments triggered
                     </span><br>
-                    <span style="font-size:36px; font-weight:800; color:#10B981;">{sim_final}</span>
+                    <span style="font-size:24px; font-weight:800; color:#10B981;">{sim_final}</span>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -3928,7 +3928,7 @@ password = "your_secure_password"       # Admin password for upload / edit / del
                                                  white-space:nowrap;">
                                         {_ico} {_lbl}
                                     </span>
-                                    <span style="font-size:16px; font-weight:700;
+                                    <span style="font-size:15px; font-weight:700;
                                                  color:#111827; flex:1;">
                                         {_entry.get('title',
                                             _entry.get('original_filename', 'Untitled'))}
