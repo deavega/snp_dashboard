@@ -1523,7 +1523,14 @@ if f_macro:
             else:
                 available_countries = df['Country'].unique().tolist()
 
-            default_sel = [target] if target in available_countries else (available_countries[:1] if available_countries else [])
+            # Keep the anchor country (currently selected in National Portfolio) always
+            # selectable, even if its own rating falls outside the chosen peer group —
+            # e.g. Indonesia (BBB) can still be benchmarked against the "A" group.
+            target_in_group = target in available_countries
+            if not target_in_group:
+                available_countries = [target] + available_countries
+
+            default_sel = [target]
 
             with col_multi:
                 sel_nations = st.multiselect(
@@ -1531,6 +1538,13 @@ if f_macro:
                     available_countries,
                     default=default_sel,
                     max_selections=7,
+                )
+
+            if not target_in_group:
+                st.caption(
+                    f"ℹ️ **{target}**'s actual rating ({r['Actual_Rating']}) falls outside the "
+                    f"**{selected_group}** group — it's included here as your anchor country so you can "
+                    f"benchmark it against these peers."
                 )
 
             if not sel_nations:
