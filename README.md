@@ -5,7 +5,7 @@
 ![Methodology](https://img.shields.io/badge/Methodology-S%26P%20Global%20%28Oct%202024%29-003087?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Live-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
-![Platform](https://img.shields.io/badge/Infrastructure-dashboardspp.cloud-1E3A8A?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Infrastructure-S&PDashboard-1E3A8A?style=for-the-badge)
 
 **A professional sovereign credit rating analytics platform aligned with S&P Global Methodology**
 
