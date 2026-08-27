@@ -115,6 +115,48 @@ def _cr_delete_doc(cfg, stored_filename):
     })
     return resp.status_code == 200
 
+# ============================================================
+# AZURE OPENAI — AI-generated insight helpers
+# ============================================================
+
+def _ai_cfg():
+    """Return Azure OpenAI config dict from st.secrets, or None if not configured."""
+    try:
+        az = st.secrets.get("azure_openai", {})
+        if not az.get("api_key") or not az.get("endpoint") or not az.get("deployment"):
+            return None
+        return {
+            "endpoint":    str(az["endpoint"]).rstrip("/"),
+            "api_key":     az["api_key"],
+            "deployment":  az["deployment"],
+            "api_version": az.get("api_version", "2024-08-01-preview"),
+        }
+    except Exception:
+        return None
+
+def _ai_chat(messages, max_tokens=1400, temperature=0.4):
+    """Call an Azure OpenAI chat-completions deployment. Returns (text, error_message)."""
+    cfg = _ai_cfg()
+    if not cfg:
+        return None, "missing_config"
+    url = (f"{cfg['endpoint']}/openai/deployments/{cfg['deployment']}"
+           f"/chat/completions?api-version={cfg['api_version']}")
+    try:
+        resp = requests.post(
+            url,
+            headers={"api-key": cfg["api_key"], "Content-Type": "application/json"},
+            json={"messages": messages, "temperature": temperature, "max_tokens": max_tokens},
+            timeout=60,
+        )
+        if not resp.ok:
+            return None, f"Azure OpenAI returned {resp.status_code}: {resp.text[:300]}"
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip(), None
+    except requests.exceptions.Timeout:
+        return None, "Request to Azure OpenAI timed out — try again."
+    except Exception as e:
+        return None, f"Request failed: {e}"
+
 # ==========================================
 # 1. S&P INDICATIVE RATING MATRIX
 # ==========================================
@@ -703,11 +745,6 @@ if os.path.exists(HEADER_IMG_PATH):
                 Based on S&amp;P Global Methodology
             </h4>
         </div>
-    </div>
-    <div style="text-align:right; font-size:10px; color:#94A3B8; margin-top:3px; margin-bottom:8px;">
-        Photo by <a href="https://unsplash.com/id/@spensersembrat" target="_blank" 
-        style="color:#94A3B8;">Spenser Sembrat</a> on 
-        <a href="https://unsplash.com" target="_blank" style="color:#94A3B8;">Unsplash</a>
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -2855,6 +2892,125 @@ if f_macro:
                 <div style="font-size:15px; font-weight:700; color:{verdict_color};">{verdict}</div>
             </div>
             """, unsafe_allow_html=True)
+
+            st.divider()
+
+            # ── Section 6: AI Strategic Recommendation (Azure OpenAI) ──────
+            st.markdown("### 🤖 AI Strategic Recommendation")
+            st.caption(
+                "Synthesizes the pillar scores, rule-based signals, and peer benchmarking above into a "
+                "prioritized, narrative recommendation — powered by your Azure OpenAI deployment."
+            )
+
+            if _ai_cfg() is None:
+                st.info(
+                    "Azure OpenAI isn't configured yet. Add an `[azure_openai]` block to "
+                    "`.streamlit/secrets.toml`, then restart the app:\n\n"
+                    "```toml\n"
+                    "[azure_openai]\n"
+                    "endpoint    = \"https://<your-resource>.openai.azure.com\"\n"
+                    "api_key     = \"<your-api-key>\"\n"
+                    "deployment  = \"<your-chat-deployment-name>\"\n"
+                    "api_version = \"2024-08-01-preview\"\n"
+                    "```"
+                )
+            else:
+                comp_rows_safe = comp_rows if peer_countries else []
+
+                def _pillar_label(pname):
+                    if pname in strengths:  return "Strength"
+                    if pname in weaknesses: return "Weakness"
+                    return "Moderate"
+
+                ai_context_lines = [
+                    f"COUNTRY: {target}",
+                    f"Actual S&P Rating: {actual_rating_clean}",
+                    f"Indicative SRM Rating (model): {srm_rating}",
+                    f"IE Profile: {prof_ie:.2f} | FP Profile: {prof_fp:.2f}",
+                    "",
+                    "PILLAR SCORES (S&P scale, 1 = strongest .. 6 = weakest):",
+                ] + [
+                    f"- {pname}: {pdata['score']:.1f} ({_pillar_label(pname)})"
+                    for pname, pdata in pillars.items()
+                ] + [
+                    "",
+                    "KEY METRICS:",
+                    f"- GDP per capita: ${r['GDP_PC']:,.0f}",
+                    f"- Real GDP growth (10-yr S&P weighted avg): {_mi['growth']:.1f}%",
+                    f"- Fiscal balance (3-yr avg): {_mi['balance']:.1f}% of GDP",
+                    f"- Debt-to-GDP: {r['Debt_GDP']:.1f}%",
+                    f"- Interest/Revenue: {r['Int_Rev']:.1f}%",
+                    f"- GEFN (3-yr avg): {_mi['gefn']:.1f}% of CAR",
+                    f"- Reserves: {r['Reserves']:.1f} months of imports",
+                    f"- CPI inflation (5-yr cycle avg): {_mi['cpi']:.1f}%",
+                    f"- Financial depth: {r['Fin_Depth']:.1f}% of GDP",
+                    f"- NIIP/CAR: {r['NIIP_CAR']:.1f}%",
+                    f"- WGI governance score: {r['WGI_Score']:.2f}",
+                    "",
+                    f"RULE-BASED SIGNALS ({weakness_count} weak, {moderate_count} moderate, {upgrade_count} strong):",
+                ] + [
+                    f"- [{s['type'].upper()}][{s['pillar']}] {s['metric']}: {s['value']} — {s['message']}"
+                    for s in signals
+                ]
+
+                if comp_rows_safe:
+                    ai_context_lines += [
+                        "",
+                        f"PEER BENCHMARKING vs {qo_peer_class}-tier average ({len(peer_countries)} peers, 2025e):",
+                    ] + [
+                        f"- {cr2['Indicator']}: {target} {cr2[target]} vs peer avg "
+                        f"{cr2[peer_avg_col]} ({cr2['Difference']}, {cr2['vs Peers']})"
+                        for cr2 in comp_rows_safe
+                    ]
+
+                ai_context_lines += ["", f"RULE-ENGINE TRAJECTORY VERDICT: {verdict}"]
+                ai_context_text = "\n".join(ai_context_lines)
+
+                AI_SYSTEM_PROMPT = (
+                    "You are a senior sovereign credit analyst supporting a rating advisory team that "
+                    "works from S&P Global Ratings' Sovereign Rating Methodology (SRM) framework. "
+                    "You are precise, quantitative, and avoid generic filler. Ground every claim in the "
+                    "figures provided — never invent data. Write in markdown."
+                )
+                AI_USER_INSTRUCTION = (
+                    "Using ONLY the data below, write a concise, decision-useful sovereign credit "
+                    "recommendation for a rating committee / investor relations audience. Structure the "
+                    "response in markdown with these exact sections:\n\n"
+                    "1. **Bottom Line** — 2-3 sentence synthesis of the credit story right now.\n"
+                    "2. **Top 3 Priorities** — the highest-leverage actions, ranked, each with a one-line "
+                    "rationale tied to the data.\n"
+                    "3. **Cross-Pillar Risks** — interactions between pillars that isolated signals miss "
+                    "(e.g. fiscal and external pressures compounding each other).\n"
+                    "4. **Strongest QO Argument** — the single most persuasive point to raise in the S&P "
+                    "rating committee dialogue, grounded in the peer comparison if available.\n"
+                    "5. **Watch Items** — 2-3 leading indicators to monitor over the next 12 months.\n\n"
+                    "Be specific and cite the actual figures — do not restate the raw data verbatim, "
+                    "synthesize it.\n\n"
+                    f"DATA:\n{ai_context_text}"
+                )
+
+                ai_cache_key = f"ai_reco_{target}_{qo_peer_class}_{actual_rating_clean}"
+                gen_clicked = st.button(
+                    "🔄 Regenerate AI Insight" if ai_cache_key in st.session_state else "✨ Generate AI Insight",
+                    key=f"ai_gen_btn_{ai_cache_key}",
+                )
+
+                if gen_clicked:
+                    with st.spinner("Analyzing signals with Azure OpenAI…"):
+                        ai_text, ai_err = _ai_chat([
+                            {"role": "system", "content": AI_SYSTEM_PROMPT},
+                            {"role": "user", "content": AI_USER_INSTRUCTION},
+                        ])
+                    if ai_err:
+                        st.error(f"AI generation failed: {ai_err}")
+                    else:
+                        st.session_state[ai_cache_key] = ai_text
+
+                if ai_cache_key in st.session_state:
+                    with st.container(border=True):
+                        st.markdown(st.session_state[ai_cache_key])
+                    with st.expander("🔍 Data sent to the model"):
+                        st.code(ai_context_text, language=None)
 
         with tabs[3]:  # BRIEFING NOTES
             st.markdown("## 📄 Briefing Notes Generator")
