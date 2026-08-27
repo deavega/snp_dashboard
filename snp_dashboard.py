@@ -808,6 +808,14 @@ st.markdown("""
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }
+
+    /* Proportional heading scale — Streamlit's defaults run oversized */
+    div[data-testid="stMarkdownContainer"] h1 { font-size: 1.6rem  !important; }
+    div[data-testid="stMarkdownContainer"] h2 { font-size: 1.35rem !important; }
+    div[data-testid="stMarkdownContainer"] h3 { font-size: 1.15rem !important; }
+    div[data-testid="stMarkdownContainer"] h4 { font-size: 1.05rem !important; }
+    div[data-testid="stMarkdownContainer"] h5,
+    div[data-testid="stMarkdownContainer"] h6 { font-size: 0.95rem !important; }
 </style>
 """, unsafe_allow_html=True)
 st.write("---")
