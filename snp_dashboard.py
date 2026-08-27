@@ -137,6 +137,17 @@ RATING_TO_NUM = {
     'BBB+':9, 'BBB':8, 'BBB-':7, 'BB+':6, 'BB':5, 'BB-':4, 'B+':3, 'B':2, 'B-':1, 'CCC':0
 }
 
+# Rating letter-classes (each notch group) — used for peer-class selectors
+RATING_CLASS_GROUPS = {
+    "AAA": ["AAA"],
+    "AA":  ["AA+", "AA", "AA-"],
+    "A":   ["A+", "A", "A-"],
+    "BBB": ["BBB+", "BBB", "BBB-"],
+    "BB":  ["BB+", "BB", "BB-"],
+    "B":   ["B+", "B", "B-"],
+    "CCC": ["CCC"],
+}
+
 def get_indicative_rating(ie_prof, fp_prof):
     """Menentukan rating indikatif berdasarkan perpotongan profil di matriks S&P."""
     row_key = next((k for k in MATRIX.keys() if k[0] <= round(fp_prof, 1) <= k[1]), (5.3, 6.0))
@@ -2417,24 +2428,35 @@ if f_macro:
             # ── QO NARRATIVE OPPORTUNITIES ────────────────────────────────────
             
             st.markdown("### 🗣️ Qualitative Overlay (QO) — Narrative Targeting")
+
+            # ── Determine target's rating class + let user pick peer class ─────
+            actual_rating_clean = str(r['Actual_Rating']).replace('*','').strip()
+            target_rating_num   = RATING_TO_NUM.get(actual_rating_clean, 8)
+
+            default_qo_class = next(
+                (cls for cls, members in RATING_CLASS_GROUPS.items() if actual_rating_clean in members),
+                "BBB"
+            )
+            qo_class_names = list(RATING_CLASS_GROUPS.keys())
+            qo_peer_class = st.selectbox(
+                "Peer group rating class",
+                qo_class_names,
+                index=qo_class_names.index(default_qo_class),
+                key="qo_peer_class_select",
+                help=f"{target}'s current rating is {actual_rating_clean} — defaults to the matching class, but you can benchmark against any class."
+            )
+
             st.markdown(
                 "Arguments that can be made in the S&P rating committee dialogue to earn or protect "
-                "residual ±1 notch adjustment points. Peer comparison uses **BBB-tier average (2025e)** "
+                f"residual ±1 notch adjustment points. Peer comparison uses **{qo_peer_class}-tier average (2025e)** "
                 "as the benchmark."
             )
 
             # ── Build peer comparison data ────────────────────────────────────
-            # Determine target's rating tier for peer group
-            actual_rating_clean = str(r['Actual_Rating']).replace('*','').strip()
-            target_rating_num   = RATING_TO_NUM.get(actual_rating_clean, 8)
-
-            # BBB tier = BBB-, BBB, BBB+ (nums 7,8,9)
-            # Expand to include ±1 notch from actual rating for broader peer set
             peer_rating_nums = [
-                RATING_TO_NUM.get('BBB-', 7),
-                RATING_TO_NUM.get('BBB',  8),
-                RATING_TO_NUM.get('BBB+', 9),
+                RATING_TO_NUM[rt] for rt in RATING_CLASS_GROUPS[qo_peer_class]
             ]
+            peer_avg_col = f"{qo_peer_class} Peer Avg"
             # Build a fast country→rating lookup dict to avoid repeated DataFrame filtering
             rating_lookup = {
                 row['Country']: str(row['Actual_Rating']).replace('*','').strip()
@@ -2506,7 +2528,7 @@ if f_macro:
                     peer_avgs[_lbl] = float(np.nanmean(_p_vals))
 
             # ── Peer comparison table ─────────────────────────────────────────
-            st.markdown(f"#### 📊 Performance vs BBB Peer Average ({len(peer_countries)} peers, 2025e · scored metrics on S&P methodology averages)")
+            st.markdown(f"#### 📊 Performance vs {qo_peer_class} Peer Average ({len(peer_countries)} peers, 2025e · scored metrics on S&P methodology averages)")
 
             if peer_countries:
                 comp_rows = []
@@ -2523,7 +2545,7 @@ if f_macro:
                     comp_rows.append({
                         "Indicator":    label,
                         f"{target}":   f"{t_val:.1f}",
-                        "BBB Peer Avg": f"{p_avg:.1f}",
+                        peer_avg_col:   f"{p_avg:.1f}",
                         "Difference":   f"{diff:+.1f}",
                         "vs Peers":     signal,
                         "_better":      is_better,
@@ -2539,7 +2561,7 @@ if f_macro:
                     RED_P    = "background-color:#fee2e2;color:#991b1b;font-weight:600;"
                     NEUTRAL  = ""
 
-                    display_cols = ["Indicator", f"{target}", "BBB Peer Avg", "Difference", "vs Peers"]
+                    display_cols = ["Indicator", f"{target}", peer_avg_col, "Difference", "vs Peers"]
                     display_only = comp_df_display[display_cols].reset_index(drop=True)
 
                     def style_peer_table(df):
@@ -2594,7 +2616,7 @@ if f_macro:
 
                 QO_NARRATIVE_TEMPLATE = {
                     'Real GDP Growth (%)': (
-                        "Trend growth of {t_val:.1f}% (10-yr S&P weighted avg) vs BBB peer average of {p_avg:.1f}% — "
+                        "Trend growth of {t_val:.1f}% (10-yr S&P weighted avg) vs {cls} peer average of {p_avg:.1f}% — "
                         "outperformance of {diff:+.1f}pp. S&P para. 15 explicitly recognises "
                         "sustained over-performance vs similarly rated peers as a basis for "
                         "positive residual adjustment. Both figures use S&P's 10-yr weighted average "
@@ -2603,7 +2625,7 @@ if f_macro:
                     'Fiscal Balance (% GDP)': (
                         "Fiscal balance of {t_val:.1f}% (3-yr avg) vs peer average of {p_avg:.1f}% — "
                         "{diff:+.1f}pp advantage. A tighter structural deficit demonstrates greater "
-                        "fiscal discipline than the BBB cohort and supports the argument for "
+                        "fiscal discipline than the {cls} cohort and supports the argument for "
                         "fiscal flexibility under the QO Fiscal Flexibility factor."
                     ),
                     'Debt-to-GDP (%)': (
@@ -2621,7 +2643,7 @@ if f_macro:
                     'GEFN (% CAR)': (
                         "GEFN of {t_val:.1f}% (3-yr avg) vs peer average of {p_avg:.1f}% — "
                         "{diff:+.1f}pp lower external rollover need. Demonstrates superior "
-                        "external liquidity management relative to the BBB cohort. Both figures "
+                        "external liquidity management relative to the {cls} cohort. Both figures "
                         "use S&P's 3-yr average basis for an apples-to-apples comparison."
                     ),
                     'Reserves (months)': (
@@ -2647,12 +2669,12 @@ if f_macro:
                     for i, row2 in enumerate(strengths_for_qo, 1):
                         label    = row2["Indicator"]
                         t_val    = float(row2[f"{target}"])
-                        p_avg    = float(row2["BBB Peer Avg"])
+                        p_avg    = float(row2[peer_avg_col])
                         diff     = t_val - p_avg
                         factor   = QO_FACTOR_MAP.get(label, "General Assessment")
                         template = QO_NARRATIVE_TEMPLATE.get(label, "")
                         argument = template.format(
-                            t_val=t_val, p_avg=p_avg, diff=diff) if template else ""
+                            t_val=t_val, p_avg=p_avg, diff=diff, cls=qo_peer_class) if template else ""
 
                         # Strength of argument
                         pct_diff = abs(diff) / abs(p_avg) * 100 if p_avg != 0 else 0
@@ -2692,7 +2714,7 @@ if f_macro:
                                     <b>{target}:</b> {t_val:.1f}
                                 </span>
                                 <span style="font-size:13px; color:#374151;">
-                                    <b>BBB Peer Avg:</b> {p_avg:.1f}
+                                    <b>{qo_peer_class} Peer Avg:</b> {p_avg:.1f}
                                 </span>
                                 <span style="font-size:13px; font-weight:700; color:{strength_color};">
                                     Outperformance: {diff:+.1f} ({pct_diff:.0f}% vs peers)
@@ -2720,9 +2742,9 @@ if f_macro:
                             In the rating committee dialogue, lead with the
                             <b style="color:white;">{strengths_for_qo[0]['Indicator']}</b> advantage
                             ({float(strengths_for_qo[0][target]):.1f} vs peer avg
-                            {float(strengths_for_qo[0]['BBB Peer Avg']):.1f}),
-                            which represents the largest relative outperformance vs the BBB cohort
-                            at {float(strengths_for_qo[0]['_diff']) / abs(float(strengths_for_qo[0]['BBB Peer Avg'])) * 100:.0f}%.
+                            {float(strengths_for_qo[0][peer_avg_col]):.1f}),
+                            which represents the largest relative outperformance vs the {qo_peer_class} cohort
+                            at {float(strengths_for_qo[0]['_diff']) / abs(float(strengths_for_qo[0][peer_avg_col])) * 100:.0f}%.
                             {'Pair this with the weakness mitigation narrative below to demonstrate a balanced credit profile.' if weaknesses_for_qo else 'The absence of material weaknesses vs peers further strengthens the case for a positive residual adjustment.'}
                         </div>
                     </div>
@@ -2730,7 +2752,7 @@ if f_macro:
 
                 else:
                     st.warning(
-                        f"No indicators where {target} materially outperforms BBB peers. "
+                        f"No indicators where {target} materially outperforms {qo_peer_class} peers. "
                         "Focus on addressing weaknesses before building a QO upgrade narrative."
                     )
 
@@ -2740,7 +2762,7 @@ if f_macro:
                         for row2 in weaknesses_for_qo:
                             label  = row2["Indicator"]
                             t_val  = float(row2[f"{target}"])
-                            p_avg  = float(row2["BBB Peer Avg"])
+                            p_avg  = float(row2[peer_avg_col])
                             diff   = t_val - p_avg
                             st.markdown(f"""
                             <div style="padding:10px; border-radius:8px; background:#fff5f5;
@@ -2748,7 +2770,7 @@ if f_macro:
                                 <b style="color:#991b1b;">{label}</b>
                                 &nbsp;|&nbsp;
                                 {target}: <b>{t_val:.1f}</b>
-                                &nbsp;vs BBB Peer Avg: <b>{p_avg:.1f}</b>
+                                &nbsp;vs {qo_peer_class} Peer Avg: <b>{p_avg:.1f}</b>
                                 &nbsp;(<span style="color:#991b1b; font-weight:600;">{diff:+.1f}</span>)
                                 <br>
                                 <span style="font-size:13px; color:#7f1d1d;">
